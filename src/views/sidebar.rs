@@ -317,6 +317,11 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
         sidebar_column = sidebar_column.push(rule::horizontal(1));
     }
 
+    if state.is_project_picker_open() {
+        sidebar_column = sidebar_column.push(view_project_picker(state));
+        sidebar_column = sidebar_column.push(rule::horizontal(1));
+    }
+
     sidebar_column = sidebar_column.push(file_list);
     sidebar_column = sidebar_column.push(rule::horizontal(1));
     sidebar_column = sidebar_column.push(footer);
@@ -429,6 +434,88 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
             }),
         );
     }
+
+    container(content)
+        .width(Fill)
+        .max_height(300.0)
+        .style(move |_: &Theme| {
+            container::Style::default().background(bg).border(iced::Border {
+                color: border_color,
+                width: 1.0,
+                radius: 8.0.into(),
+            })
+        })
+        .into()
+}
+
+fn view_project_picker(state: &State) -> Element<'_, Message> {
+    let theme = state.app_theme();
+    let palette = theme.extended_palette();
+    let fg = palette.background.base.text;
+    let bg = palette.background.base.color;
+    let border_color = palette.background.base.text.scale_alpha(0.15);
+    let hover_bg = palette.primary.weak.color;
+    let hover_fg = palette.primary.weak.text;
+    let empty_color = palette.background.strong.text.scale_alpha(0.6);
+
+    let Some(picker) = state.project_picker.as_ref() else {
+        return text("").into();
+    };
+
+    let input = text_input("Filter projects…", &picker.filter)
+        .on_input(Message::ProjectPickerFilterChanged)
+        .id(picker.input_id.clone())
+        .size(13)
+        .padding([8, 12]);
+
+    let filtered = picker.filtered_repos();
+
+    let repo_items: Vec<Element<'_, Message>> = filtered
+        .iter()
+        .enumerate()
+        .map(|(i, repo)| {
+            let is_selected = i == picker.selected_index;
+            let item_bg = if is_selected { hover_bg } else { bg };
+            let item_fg = if is_selected { hover_fg } else { fg };
+            let repo_owned = repo.to_string();
+
+            // Show just the directory name
+            let name = repo.rsplit('/').next().unwrap_or(repo);
+
+            let row_content = row![
+                text(name).size(13).font(MONO).color(item_fg),
+            ]
+            .spacing(8)
+            .align_y(iced::Alignment::Center);
+
+            mouse_area(
+                container(row_content)
+                    .width(Fill)
+                    .padding([6, 12])
+                    .style(move |_: &Theme| {
+                        container::Style::default().background(item_bg)
+                    }),
+            )
+            .on_press(Message::SwitchProject(repo_owned))
+            .into()
+        })
+        .collect();
+
+    let repo_list: Element<'_, Message> = if repo_items.is_empty() {
+        container(
+            text("No recent projects")
+                .size(12)
+                .color(empty_color),
+        )
+        .padding([8, 12])
+        .into()
+    } else {
+        scrollable(column(repo_items).spacing(2))
+            .height(iced::Length::Shrink)
+            .into()
+    };
+
+    let content = column![input, rule::horizontal(1), repo_list].spacing(0);
 
     container(content)
         .width(Fill)

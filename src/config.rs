@@ -55,8 +55,10 @@ pub fn load_settings() -> Result<Settings> {
     Ok(settings)
 }
 
+#[allow(dead_code)]
 const MAX_RECENT_REPOS: usize = 20;
 
+#[allow(dead_code)]
 pub fn push_recent_repo(settings: &mut Settings, repo_path: &str) {
     settings.recent_repos.retain(|p| p != repo_path);
     settings.recent_repos.insert(0, repo_path.to_owned());

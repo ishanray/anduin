@@ -174,6 +174,7 @@ pub(crate) enum Message {
     BranchSwitched(Result<(), String>),
     CurrentBranchFetched(Result<String, String>),
     OpenProjectPicker,
+    #[allow(dead_code)]
     CloseProjectPicker,
     ProjectPickerFilterChanged(String),
     SwitchProject(String),
