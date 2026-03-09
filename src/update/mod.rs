@@ -4,7 +4,7 @@ mod repo;
 mod search;
 
 use crate::actions::{load_selected_diff_without_focus_change, maybe_run_project_search};
-use crate::app::{ActivePane, Message, SidebarTarget, State};
+use crate::app::{ActivePane, HistoryFocus, Message, SidebarTarget, State};
 use iced::clipboard;
 use iced::Task;
 
@@ -105,9 +105,15 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::SwitchProject(repo) => repo::handle_switch_project(state, repo),
         Message::SwitchSidebarTab(tab) => history::handle_switch_sidebar_tab(state, tab),
         Message::CommitsLoaded(result) => history::handle_commits_loaded(state, result),
-        Message::SelectCommit(index) => history::handle_select_commit(state, index),
+        Message::SelectCommit(index) => {
+            state.history_focus = HistoryFocus::CommitList;
+            history::handle_select_commit(state, index)
+        }
         Message::CommitFilesLoaded(result) => history::handle_commit_files_loaded(state, result),
-        Message::SelectHistoryFile(index) => history::handle_select_history_file(state, index),
+        Message::SelectHistoryFile(index) => {
+            state.history_focus = HistoryFocus::FileList;
+            history::handle_select_history_file(state, index)
+        }
         Message::HistoryDiffLoaded(request_id, result) => {
             history::handle_history_diff_loaded(state, request_id, result)
         }

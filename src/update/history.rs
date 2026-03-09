@@ -60,7 +60,6 @@ pub(crate) fn handle_commits_loaded(
 }
 
 pub(crate) fn handle_select_commit(state: &mut State, index: usize) -> Task<Message> {
-    state.history_focus = HistoryFocus::CommitList;
     state.selected_commit = Some(index);
     state.history_selected_file = None;
     state.history_selected_path = None;
@@ -100,7 +99,6 @@ pub(crate) fn handle_commit_files_loaded(
 }
 
 pub(crate) fn handle_select_history_file(state: &mut State, index: usize) -> Task<Message> {
-    state.history_focus = HistoryFocus::FileList;
     let Some(file) = state.commit_files.get(index).cloned() else {
         return Task::none();
     };
