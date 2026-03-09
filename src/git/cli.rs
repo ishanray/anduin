@@ -207,3 +207,42 @@ fn ensure_success(output: &Output, command: &str) -> Result<()> {
 
     Err(anyhow!(details))
 }
+
+/// List local branch names and identify the current branch.
+/// Returns `(branches, current_branch)`.
+pub fn git_list_branches(repo_path: &Path) -> Result<(Vec<String>, String)> {
+    let output = Command::new("git")
+        .args(["branch", "--format=%(refname:short)"])
+        .current_dir(repo_path)
+        .output()
+        .context("failed to run git branch")?;
+
+    ensure_success(&output, "git branch")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let branches: Vec<String> = stdout
+        .lines()
+        .map(|line| line.trim().to_owned())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    let current = git_current_branch(repo_path)?;
+    Ok((branches, current))
+}
+
+/// Get the current branch name.
+pub fn git_current_branch(repo_path: &Path) -> Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .context("failed to get current branch")?;
+
+    ensure_success(&output, "git rev-parse --abbrev-ref HEAD")?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+/// Switch to the given branch.
+pub fn git_switch_branch(repo_path: &Path, branch: &str) -> Result<()> {
+    run_git_command(repo_path, &["switch", branch])
+}
