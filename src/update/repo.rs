@@ -1,10 +1,12 @@
 use super::update;
 use crate::actions::{
-    commit_staged_changes, load_changed_files, load_selected_diff, maybe_run_project_search,
-    scroll_sidebar_to_selected, stage_all_files, stage_files, unstage_all_files, unstage_files,
+    commit_staged_changes, fetch_current_branch, list_branches, load_changed_files,
+    load_selected_diff, maybe_run_project_search, scroll_sidebar_to_selected, stage_all_files,
+    stage_files, switch_branch, unstage_all_files, unstage_files,
 };
 use crate::app::{
-    ActivePane, CommitComposer, Message, ProjectSearch, SidebarTarget, State, StatusTone,
+    ActivePane, BranchPicker, CommitComposer, Message, ProjectSearch, SidebarTarget, State,
+    StatusTone,
 };
 use crate::git;
 use crate::search::SEARCH_DEBOUNCE_MS;
@@ -49,18 +51,25 @@ pub(crate) fn handle_files_loaded(
 
             let refresh_task = state.finish_refresh();
             let search_task = maybe_run_project_search(state);
+            let branch_task = {
+                let repo = state.repo_path.clone();
+                Task::perform(
+                    async move { fetch_current_branch(repo) },
+                    Message::CurrentBranchFetched,
+                )
+            };
 
             if let Some(index) = next_selection {
                 let diff_task = load_selected_diff(state, index);
                 let scroll_task = scroll_sidebar_to_selected(state);
-                return Task::batch([diff_task, scroll_task, refresh_task, search_task]);
+                return Task::batch([diff_task, scroll_task, refresh_task, search_task, branch_task]);
             }
 
             state.selected_file = None;
             state.selected_path = None;
             state.current_diff = None;
             state.clear_explicit_selection();
-            Task::batch([refresh_task, search_task])
+            Task::batch([refresh_task, search_task, branch_task])
         }
         Err(error) => {
             state.error = Some(error);
@@ -189,6 +198,10 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
         return Task::none();
     }
 
+    if state.is_branch_picker_open() {
+        return handle_branch_picker_key_event(state, event);
+    }
+
     if state.is_search_open() {
         return handle_project_search_keyboard_event(state, &event);
     }
@@ -207,7 +220,7 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
                 .update(&EditorMessage::OpenSearch)
                 .map(Message::DiffEditor)
         }
-        Some(ShortcutAction::OpenBranchPicker) => Task::none(),
+        Some(ShortcutAction::OpenBranchPicker) => update(state, Message::OpenBranchPicker),
         Some(ShortcutAction::CloseActive) => {
             if state.active_pane == ActivePane::Diff && state.diff_editor.is_search_open() {
                 state
@@ -364,6 +377,160 @@ pub(crate) fn handle_commit_finished(
             Task::none()
         }
     }
+}
+
+pub(crate) fn handle_open_branch_picker(state: &mut State) -> Task<Message> {
+    if state.branch_picker.is_some() {
+        return handle_close_branch_picker(state);
+    }
+
+    let repo_path = state.repo_path.clone();
+    Task::perform(
+        async move { list_branches(repo_path) },
+        Message::BranchesFetched,
+    )
+}
+
+pub(crate) fn handle_close_branch_picker(state: &mut State) -> Task<Message> {
+    state.branch_picker = None;
+    Task::none()
+}
+
+pub(crate) fn handle_branches_fetched(
+    state: &mut State,
+    result: Result<(Vec<String>, String), String>,
+) -> Task<Message> {
+    match result {
+        Ok((branches, current)) => {
+            state.current_branch = Some(current.clone());
+            let picker = BranchPicker::new(branches, current);
+            let input_id = picker.input_id.clone();
+            state.branch_picker = Some(picker);
+            focus(input_id)
+        }
+        Err(error) => {
+            state.set_status_message(error, StatusTone::Error);
+            Task::none()
+        }
+    }
+}
+
+pub(crate) fn handle_branch_picker_filter_changed(
+    state: &mut State,
+    filter: String,
+) -> Task<Message> {
+    if let Some(picker) = state.branch_picker.as_mut() {
+        picker.filter = filter;
+        picker.selected_index = 0;
+        picker.error = None;
+    }
+    Task::none()
+}
+
+pub(crate) fn handle_branch_picker_key_event(
+    state: &mut State,
+    event: keyboard::Event,
+) -> Task<Message> {
+    let keyboard::Event::KeyPressed { key, .. } = &event else {
+        return Task::none();
+    };
+
+    match key.as_ref() {
+        keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
+            if let Some(picker) = state.branch_picker.as_mut() {
+                let count = picker.filtered_branches().len();
+                if count > 0 {
+                    picker.selected_index = (picker.selected_index + 1).min(count - 1);
+                }
+            }
+            Task::none()
+        }
+        keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
+            if let Some(picker) = state.branch_picker.as_mut() {
+                picker.selected_index = picker.selected_index.saturating_sub(1);
+            }
+            Task::none()
+        }
+        keyboard::Key::Named(keyboard::key::Named::Enter) => {
+            let branch = state.branch_picker.as_ref().and_then(|picker| {
+                let filtered = picker.filtered_branches();
+                filtered.get(picker.selected_index).map(|s| s.to_string())
+            });
+            if let Some(branch) = branch {
+                update(state, Message::SwitchBranch(branch))
+            } else {
+                Task::none()
+            }
+        }
+        keyboard::Key::Named(keyboard::key::Named::Escape) => {
+            handle_close_branch_picker(state)
+        }
+        _ => Task::none(),
+    }
+}
+
+pub(crate) fn handle_switch_branch(state: &mut State, branch: String) -> Task<Message> {
+    if state.branch_picker.as_ref().is_some_and(|p| p.current == branch) {
+        return handle_close_branch_picker(state);
+    }
+
+    let repo_path = state.repo_path.clone();
+    let branch_clone = branch.clone();
+    Task::perform(
+        async move { switch_branch(repo_path, branch_clone).map(|()| ()) },
+        Message::BranchSwitched,
+    )
+}
+
+pub(crate) fn handle_branch_switched(
+    state: &mut State,
+    result: Result<(), String>,
+) -> Task<Message> {
+    match result {
+        Ok(()) => {
+            let branch_name = state
+                .branch_picker
+                .as_ref()
+                .and_then(|p| {
+                    let filtered = p.filtered_branches();
+                    filtered.get(p.selected_index).map(|s| s.to_string())
+                })
+                .unwrap_or_default();
+
+            state.branch_picker = None;
+            state.current_branch = Some(branch_name.clone());
+            state.set_status_message(
+                format!("Switched to {branch_name}"),
+                StatusTone::Success,
+            );
+
+            state.files.clear();
+            state.selected_file = None;
+            state.selected_path = None;
+            state.current_diff = None;
+            state.diff_search_cache.clear();
+            state.initialized_tree = false;
+            state.tree_dirty = true;
+
+            state.queue_refresh()
+        }
+        Err(error) => {
+            if let Some(picker) = state.branch_picker.as_mut() {
+                picker.error = Some(error);
+            }
+            Task::none()
+        }
+    }
+}
+
+pub(crate) fn handle_current_branch_fetched(
+    state: &mut State,
+    result: Result<String, String>,
+) -> Task<Message> {
+    if let Ok(branch) = result {
+        state.current_branch = Some(branch);
+    }
+    Task::none()
 }
 
 fn handle_project_search_keyboard_event(

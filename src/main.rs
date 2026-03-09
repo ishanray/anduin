@@ -20,7 +20,7 @@ mod watch;
 #[cfg(test)]
 mod tests;
 
-use actions::load_changed_files;
+use actions::{fetch_current_branch, load_changed_files};
 use app::{ActivePane, Message, State, ThemeMode};
 use iced::event as iced_event;
 use iced::time;
@@ -149,11 +149,19 @@ fn boot() -> (State, Task<Message>) {
         branch_picker: None,
     };
 
+    let branch_task = {
+        let repo = repo_path.clone();
+        Task::perform(
+            async move { fetch_current_branch(repo) },
+            Message::CurrentBranchFetched,
+        )
+    };
+
     let task = Task::perform(
         async move { load_changed_files(repo_path) },
         Message::FilesLoaded,
     );
-    (state, task)
+    (state, Task::batch([task, branch_task]))
 }
 
 fn subscription(state: &State) -> Subscription<Message> {

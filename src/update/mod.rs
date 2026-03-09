@@ -77,16 +77,19 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
             state.show_shortcuts_help = !state.show_shortcuts_help;
             Task::none()
         }
-        Message::OpenBranchPicker
-        | Message::CloseBranchPicker
-        | Message::BranchesFetched(_)
-        | Message::BranchPickerFilterChanged(_)
-        | Message::BranchPickerKeyEvent(_)
-        | Message::SwitchBranch(_)
-        | Message::BranchSwitched(_)
-        | Message::CurrentBranchFetched(_) => {
-            // Branch picker handlers will be implemented in a subsequent task.
-            Task::none()
+        Message::OpenBranchPicker => repo::handle_open_branch_picker(state),
+        Message::CloseBranchPicker => repo::handle_close_branch_picker(state),
+        Message::BranchesFetched(result) => repo::handle_branches_fetched(state, result),
+        Message::BranchPickerFilterChanged(filter) => {
+            repo::handle_branch_picker_filter_changed(state, filter)
+        }
+        Message::BranchPickerKeyEvent(event) => {
+            repo::handle_branch_picker_key_event(state, event)
+        }
+        Message::SwitchBranch(branch) => repo::handle_switch_branch(state, branch),
+        Message::BranchSwitched(result) => repo::handle_branch_switched(state, result),
+        Message::CurrentBranchFetched(result) => {
+            repo::handle_current_branch_fetched(state, result)
         }
     }
 }

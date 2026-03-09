@@ -1,10 +1,10 @@
+use crate::SIDEBAR_ROW_HEIGHT;
 use crate::app::{DiffSearchCacheEntry, Message, ProjectSearchResponse, SidebarTarget, State};
 use crate::git;
 use crate::git::diff::{ChangedFile, FileDiff, FileStatus};
 use crate::search::{self, ProjectSearchResult, find_match_line_indices_with_lower};
 use crate::tree::expand_parent_dirs;
 use crate::views::sidebar::selected_sidebar_row_bounds;
-use crate::SIDEBAR_ROW_HEIGHT;
 use iced::Task;
 use iced::widget::operation::scroll_to;
 use iced::widget::scrollable;
@@ -177,10 +177,7 @@ pub(crate) fn scroll_sidebar_to_selected(state: &State) -> Task<Message> {
     if state.sidebar_viewport_height <= 0.0 {
         return scroll_to(
             state.sidebar_scroll_id.clone(),
-            scrollable::AbsoluteOffset {
-                x: 0.0,
-                y: row_top,
-            },
+            scrollable::AbsoluteOffset { x: 0.0, y: row_top },
         );
     }
 
@@ -204,6 +201,18 @@ pub(crate) fn scroll_sidebar_to_selected(state: &State) -> Task<Message> {
         state.sidebar_scroll_id.clone(),
         scrollable::AbsoluteOffset { x: 0.0, y },
     )
+}
+
+pub(crate) fn list_branches(repo_path: PathBuf) -> Result<(Vec<String>, String), String> {
+    git::cli::git_list_branches(&repo_path).map_err(|e| e.to_string())
+}
+
+pub(crate) fn switch_branch(repo_path: PathBuf, branch: String) -> Result<(), String> {
+    git::cli::git_switch_branch(&repo_path, &branch).map_err(|e| e.to_string())
+}
+
+pub(crate) fn fetch_current_branch(repo_path: PathBuf) -> Result<String, String> {
+    git::cli::git_current_branch(&repo_path).map_err(|e| e.to_string())
 }
 
 pub(crate) fn maybe_run_project_search(state: &mut State) -> Task<Message> {
