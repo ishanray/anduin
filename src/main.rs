@@ -1,0 +1,201 @@
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
+
+mod actions;
+mod app;
+mod config;
+mod git;
+#[path = "../vendor/lucide/mod.rs"]
+mod lucide;
+mod search;
+mod shortcuts;
+mod theme;
+mod tree;
+mod update;
+mod views;
+mod watch;
+
+use actions::load_changed_files;
+use app::{Message, State, ThemeMode};
+use iced::event as iced_event;
+use iced::time;
+use iced::widget::{Id, container, row, text};
+use iced::{Element, Fill, Font, Subscription, Task};
+use iced_code_editor::{CodeEditor, Message as EditorMessage, theme as editor_theme};
+use lucide::LUCIDE_FONT_BYTES;
+use std::collections::{HashMap, HashSet};
+use std::env;
+use std::path::PathBuf;
+use std::time::Duration;
+use update::update;
+use views::diff::view_diff;
+use views::project_search::view_project_search;
+use views::sidebar::view_sidebar;
+
+const MONO: Font = Font::MONOSPACE;
+const TREE_INDENT: f32 = 18.0;
+/// Height of a single sidebar row (content + vertical padding + spacing).
+const SIDEBAR_ROW_HEIGHT: f32 = 32.0;
+/// Shared height for the top header bars across panels.
+const PANEL_HEADER_HEIGHT: f32 = 48.0;
+
+fn main() -> iced::Result {
+    let foreground = env::args().any(|a| a == "--foreground" || a == "-f");
+
+    if should_detach_from_terminal() && !foreground {
+        detach_from_terminal();
+    }
+
+    iced::application(boot, update, view)
+        .title("Anduin")
+        .font(LUCIDE_FONT_BYTES)
+        .theme(|state: &State| state.app_theme())
+        .subscription(subscription)
+        .run()
+}
+
+fn should_detach_from_terminal() -> bool {
+    cfg!(target_os = "linux")
+}
+
+fn detach_from_terminal() {
+    #[cfg(target_os = "linux")]
+    {
+        use fork::{Fork, daemon};
+
+        match daemon(true, false) {
+            Ok(Fork::Parent(_)) => {
+                std::process::exit(0);
+            }
+            Ok(Fork::Child) => {}
+            Err(_) => {
+                eprintln!("[anduin] warning: fork() failed, running in foreground");
+            }
+        }
+    }
+}
+
+fn boot() -> (State, Task<Message>) {
+    let settings = match config::load_settings() {
+        Ok(s) => s,
+        Err(error) => {
+            eprintln!("[anduin] warning: failed to load settings: {error}");
+            config::Settings::default()
+        }
+    };
+
+    let repo_path = settings
+        .repo_path
+        .as_ref()
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .and_then(|p| git::diff::find_repo_root(&p).ok())
+        .unwrap_or_else(|| {
+            let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            git::diff::find_repo_root(&cwd).unwrap_or(cwd)
+        });
+
+    eprintln!("[anduin] boot repo_path={}", repo_path.display(),);
+
+    let theme_mode = ThemeMode::from_preference(settings.theme);
+
+    let mut diff_editor = CodeEditor::new("", "diff");
+    diff_editor.set_theme(editor_theme::from_iced_theme(&theme_mode.app_theme()));
+    diff_editor.set_font(MONO);
+    diff_editor.set_font_size(13.0, true);
+    diff_editor.set_smooth_scroll_enabled(true);
+    diff_editor.request_focus();
+
+    let cached_theme = theme_mode.app_theme();
+    let state = State {
+        repo_path: repo_path.clone(),
+        files: Vec::new(),
+        selected_file: None,
+        selected_path: None,
+        selected_paths: HashSet::new(),
+        selection_anchor_path: None,
+        current_diff: None,
+        diff_editor,
+        theme_mode,
+        error: None,
+        status_message: None,
+        commit_composer: None,
+        expanded_dirs: HashSet::new(),
+        tree_root_expanded: true,
+        alt_pressed: false,
+        initialized_tree: false,
+        cached_rows: Vec::new(),
+        tree_dirty: true,
+        refresh_in_flight: true,
+        refresh_queued: false,
+        active_diff_request: 0,
+        diff_search_cache: HashMap::new(),
+        scroll_positions: HashMap::new(),
+        project_search: None,
+        pending_diff_jump: None,
+        sidebar_scroll_id: Id::unique(),
+        cached_theme,
+    };
+
+    let task = Task::perform(
+        async move { load_changed_files(repo_path) },
+        Message::FilesLoaded,
+    );
+    (state, task)
+}
+
+fn subscription(state: &State) -> Subscription<Message> {
+    let mut subscriptions = vec![
+        iced_event::listen_with(|event, _status, _window| match event {
+            iced::Event::Keyboard(kb_event) => Some(Message::KeyboardEvent(kb_event)),
+            _ => None,
+        }),
+        watch::subscription(state.repo_path.clone()).map(Message::WatchEvent),
+    ];
+
+    if state.current_diff.is_some()
+        && let Some(interval) = state.diff_editor.tick_interval()
+    {
+        subscriptions.push(time::every(interval).map(|_| Message::DiffEditor(EditorMessage::Tick)));
+    }
+
+    if state
+        .project_search
+        .as_ref()
+        .is_some_and(|search| search.pending_run_at.is_some())
+    {
+        subscriptions
+            .push(time::every(Duration::from_millis(50)).map(|_| Message::ProjectSearchTick));
+    }
+
+    Subscription::batch(subscriptions)
+}
+
+fn view(state: &State) -> Element<'_, Message> {
+    if let Some(ref err) = state.error {
+        return container(
+            iced::widget::column![
+                text("Error").size(20),
+                text(err.clone()).size(14).font(MONO)
+            ]
+            .spacing(10),
+        )
+        .padding(20)
+        .into();
+    }
+
+    if let Some(search) = state.project_search.as_ref() {
+        return view_project_search(state, search);
+    }
+
+    let sidebar = view_sidebar(state);
+    let diff_view = view_diff(state);
+
+    row![
+        container(sidebar).width(320),
+        container(diff_view).width(Fill)
+    ]
+    .into()
+}

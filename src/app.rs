@@ -1,0 +1,505 @@
+use crate::actions::load_changed_files;
+use crate::config;
+use crate::git::diff::{ChangedFile, FileDiff};
+use crate::search::{ProjectSearchResult, SEARCH_DEBOUNCE_MS};
+use crate::theme;
+use crate::tree::{SidebarRow, TreeDir, expand_parent_dirs};
+use crate::watch;
+use iced::keyboard;
+use iced::widget::Id;
+use iced::{Task, Theme};
+use iced_code_editor::Message as EditorMessage;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ThemeMode {
+    Dark,
+    Light,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StatusTone {
+    Success,
+    Error,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StatusMessage {
+    pub(crate) text: String,
+    pub(crate) tone: StatusTone,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CommitComposer {
+    pub(crate) summary: String,
+    pub(crate) input_id: Id,
+    pub(crate) submitting: bool,
+    pub(crate) error: Option<String>,
+}
+
+pub(crate) struct State {
+    pub(crate) repo_path: PathBuf,
+    pub(crate) files: Vec<ChangedFile>,
+    pub(crate) selected_file: Option<usize>,
+    pub(crate) selected_path: Option<String>,
+    pub(crate) selected_paths: HashSet<String>,
+    pub(crate) selection_anchor_path: Option<String>,
+    pub(crate) current_diff: Option<FileDiff>,
+    pub(crate) diff_editor: iced_code_editor::CodeEditor,
+    pub(crate) theme_mode: ThemeMode,
+    pub(crate) error: Option<String>,
+    pub(crate) status_message: Option<StatusMessage>,
+    pub(crate) commit_composer: Option<CommitComposer>,
+    pub(crate) expanded_dirs: HashSet<String>,
+    pub(crate) tree_root_expanded: bool,
+    pub(crate) alt_pressed: bool,
+    pub(crate) initialized_tree: bool,
+    pub(crate) cached_rows: Vec<SidebarRow>,
+    pub(crate) tree_dirty: bool,
+    pub(crate) refresh_in_flight: bool,
+    pub(crate) refresh_queued: bool,
+    pub(crate) active_diff_request: u64,
+    pub(crate) diff_search_cache: HashMap<String, DiffSearchCacheEntry>,
+    pub(crate) scroll_positions: HashMap<String, f32>,
+    pub(crate) project_search: Option<ProjectSearch>,
+    pub(crate) pending_diff_jump: Option<PendingDiffJump>,
+    pub(crate) sidebar_scroll_id: Id,
+    pub(crate) cached_theme: Theme,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DiffSearchCacheEntry {
+    pub(crate) raw_diff: Arc<str>,
+    pub(crate) raw_diff_lower: Option<Arc<str>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProjectSearchResponse {
+    pub(crate) results: Vec<ProjectSearchResult>,
+    pub(crate) cache: HashMap<String, DiffSearchCacheEntry>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProjectSearch {
+    pub(crate) query: String,
+    pub(crate) case_sensitive: bool,
+    pub(crate) query_lower: String,
+    pub(crate) results: Vec<ProjectSearchResult>,
+    pub(crate) matching_paths: HashSet<String>,
+    pub(crate) result_index_by_path: HashMap<String, usize>,
+    pub(crate) searching: bool,
+    pub(crate) request_id: u64,
+    pub(crate) pending_run_at: Option<Instant>,
+    pub(crate) input_id: Id,
+    pub(crate) results_scroll_id: Id,
+    pub(crate) cached_summary: String,
+    pub(crate) cached_file_summary: String,
+    pub(crate) cached_result_summary: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PendingDiffJump {
+    pub(crate) path: String,
+    pub(crate) line_number: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum Message {
+    FilesLoaded(Result<Vec<ChangedFile>, String>),
+    SelectFile(usize),
+    ToggleRoot(bool),
+    ToggleDir(String, bool),
+    DiffLoaded(u64, Result<FileDiff, String>),
+    DiffEditor(EditorMessage),
+    ToggleTheme,
+    OpenRepo,
+    RepoOpened(Option<PathBuf>),
+    WatchEvent(watch::Event),
+    KeyboardEvent(keyboard::Event),
+    OpenProjectSearch,
+    CloseProjectSearch,
+    OpenCommitComposer,
+    CloseCommitComposer,
+    CommitSummaryChanged(String),
+    SubmitCommit,
+    GitOperationFinished(Result<String, String>),
+    CommitFinished(Result<String, String>),
+    ProjectSearchQueryChanged(String),
+    ProjectSearchToggleCase,
+    ProjectSearchTick,
+    ProjectSearchResults(u64, Result<ProjectSearchResponse, String>),
+    ProjectSearchScrollToFile(String),
+    ProjectSearchJumpTo(String, usize),
+}
+
+impl ThemeMode {
+    pub(crate) fn from_preference(preference: config::ThemePreference) -> Self {
+        match preference {
+            config::ThemePreference::Dark => Self::Dark,
+            config::ThemePreference::Light => Self::Light,
+            config::ThemePreference::System => Self::Dark,
+        }
+    }
+
+    pub(crate) fn preference(self) -> config::ThemePreference {
+        match self {
+            Self::Dark => config::ThemePreference::Dark,
+            Self::Light => config::ThemePreference::Light,
+        }
+    }
+
+    pub(crate) fn app_theme(self) -> Theme {
+        match self {
+            Self::Dark => theme::github_dark(),
+            Self::Light => theme::github_light(),
+        }
+    }
+
+    pub(crate) fn toggle(&mut self) {
+        *self = match self {
+            Self::Dark => Self::Light,
+            Self::Light => Self::Dark,
+        };
+    }
+
+    pub(crate) fn is_dark(self) -> bool {
+        matches!(self, Self::Dark)
+    }
+}
+
+impl CommitComposer {
+    pub(crate) fn new() -> Self {
+        Self {
+            summary: String::new(),
+            input_id: Id::unique(),
+            submitting: false,
+            error: None,
+        }
+    }
+
+    pub(crate) fn can_submit(&self, staged_count: usize) -> bool {
+        !self.submitting && staged_count > 0 && !self.summary.trim().is_empty()
+    }
+}
+
+impl ProjectSearch {
+    pub(crate) fn new() -> Self {
+        Self {
+            query: String::new(),
+            case_sensitive: false,
+            query_lower: String::new(),
+            results: Vec::new(),
+            matching_paths: HashSet::new(),
+            result_index_by_path: HashMap::new(),
+            searching: false,
+            request_id: 0,
+            pending_run_at: None,
+            input_id: Id::unique(),
+            results_scroll_id: Id::unique(),
+            cached_summary: String::new(),
+            cached_file_summary: "0 files".to_owned(),
+            cached_result_summary: String::new(),
+        }
+    }
+
+    pub(crate) fn set_results(&mut self, results: Vec<ProjectSearchResult>) {
+        self.matching_paths = results
+            .iter()
+            .map(|result| result.file_path.clone())
+            .collect();
+        self.result_index_by_path = results
+            .iter()
+            .enumerate()
+            .map(|(i, r)| (r.file_path.clone(), i))
+            .collect();
+        self.results = results;
+        self.searching = false;
+        self.rebuild_cached_summaries();
+    }
+
+    pub(crate) fn clear_results(&mut self) {
+        self.results.clear();
+        self.matching_paths.clear();
+        self.result_index_by_path.clear();
+        self.searching = false;
+        self.rebuild_cached_summaries();
+    }
+
+    pub(crate) fn update_query_lower(&mut self) {
+        self.query_lower = if self.case_sensitive {
+            String::new()
+        } else {
+            self.query.to_lowercase()
+        };
+    }
+
+    pub(crate) fn rebuild_cached_summaries(&mut self) {
+        if self.query.is_empty() {
+            self.cached_summary =
+                "Search current changed diffs with ±5 lines of context".to_owned();
+            self.cached_file_summary = "0 files".to_owned();
+            self.cached_result_summary = String::new();
+            return;
+        }
+
+        if self.searching {
+            self.cached_summary = format!("Searching for {:?}…", self.query);
+            self.cached_file_summary = "0 files".to_owned();
+            self.cached_result_summary = String::new();
+            return;
+        }
+
+        let file_count = self.results.len();
+        let match_count: usize = self.results.iter().map(|r| r.total_matches).sum();
+        self.cached_summary = format!(
+            "{:?} • {} file{} • {} match{}",
+            self.query,
+            file_count,
+            if file_count == 1 { "" } else { "s" },
+            match_count,
+            if match_count == 1 { "" } else { "es" }
+        );
+
+        self.cached_file_summary = format!(
+            "{} file{}",
+            file_count,
+            if file_count == 1 { "" } else { "s" }
+        );
+
+        let context_count: usize = self.results.iter().map(|r| r.matches.len()).sum();
+        self.cached_result_summary = format!(
+            "{} context block{} • {} total match{}",
+            context_count,
+            if context_count == 1 { "" } else { "s" },
+            match_count,
+            if match_count == 1 { "" } else { "es" }
+        );
+    }
+}
+
+impl State {
+    pub(crate) fn app_theme(&self) -> Theme {
+        self.cached_theme.clone()
+    }
+
+    pub(crate) fn persist_settings(&self) {
+        let settings = config::Settings {
+            theme: self.theme_mode.preference(),
+            repo_path: Some(self.repo_path.to_string_lossy().into_owned()),
+        };
+
+        if let Err(error) = config::save_settings(&settings) {
+            eprintln!("[anduin] warning: failed to save settings: {error}");
+        }
+    }
+
+    pub(crate) fn staged_file_count(&self) -> usize {
+        self.files.iter().filter(|file| file.is_staged()).count()
+    }
+
+    pub(crate) fn unstaged_file_count(&self) -> usize {
+        self.files.iter().filter(|file| file.is_unstaged()).count()
+    }
+
+    pub(crate) fn selected_file_count(&self) -> usize {
+        self.selected_paths.len()
+    }
+
+    pub(crate) fn has_explicit_selection(&self) -> bool {
+        !self.selected_paths.is_empty()
+    }
+
+    pub(crate) fn is_path_selected(&self, path: &str) -> bool {
+        self.selected_paths.contains(path)
+    }
+
+    pub(crate) fn clear_explicit_selection(&mut self) {
+        self.selected_paths.clear();
+        self.selection_anchor_path = None;
+    }
+
+    pub(crate) fn retain_file_selection(&mut self) {
+        let known_paths: HashSet<&str> = self.files.iter().map(|file| file.path.as_str()).collect();
+        self.selected_paths
+            .retain(|path| known_paths.contains(path.as_str()));
+
+        if self
+            .selection_anchor_path
+            .as_deref()
+            .is_some_and(|path| !known_paths.contains(path))
+        {
+            self.selection_anchor_path = None;
+        }
+    }
+
+    pub(crate) fn targeted_file_indices(&self) -> Vec<usize> {
+        if self.has_explicit_selection() {
+            self.files
+                .iter()
+                .enumerate()
+                .filter_map(|(index, file)| self.selected_paths.contains(&file.path).then_some(index))
+                .collect()
+        } else {
+            self.selected_file.into_iter().collect()
+        }
+    }
+
+    pub(crate) fn visible_file_indices(&self) -> Vec<usize> {
+        self.cached_rows
+            .iter()
+            .filter_map(|row| match row {
+                SidebarRow::File { index, .. } => Some(*index),
+                SidebarRow::Root { .. } | SidebarRow::Dir { .. } => None,
+            })
+            .collect()
+    }
+
+    pub(crate) fn set_status_message(&mut self, text: impl Into<String>, tone: StatusTone) {
+        self.status_message = Some(StatusMessage {
+            text: text.into(),
+            tone,
+        });
+    }
+
+    fn tree_root_name(&self) -> String {
+        self.repo_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| self.repo_path.to_string_lossy().into_owned())
+    }
+
+    fn build_tree(&self) -> TreeDir {
+        let mut root = TreeDir::root();
+        for (index, file) in self.files.iter().enumerate() {
+            root.insert_file(index, file);
+        }
+        root.sort_files_recursive();
+        root
+    }
+
+    fn rebuild_cached_rows(&mut self) {
+        let tree = self.build_tree();
+        self.cached_rows.clear();
+        self.cached_rows.push(SidebarRow::Root {
+            name: self.tree_root_name(),
+            expanded: self.tree_root_expanded,
+        });
+
+        if self.tree_root_expanded {
+            tree.collect_visible_rows(&self.expanded_dirs, 1, &mut self.cached_rows);
+        }
+
+        self.tree_dirty = false;
+    }
+
+    pub(crate) fn ensure_rows_cached(&mut self) {
+        if self.tree_dirty {
+            self.rebuild_cached_rows();
+        }
+    }
+
+    pub(crate) fn sync_tree_state(&mut self) {
+        let tree = self.build_tree();
+        let mut all_dirs = Vec::new();
+        tree.collect_dir_paths(&mut all_dirs);
+
+        if !self.initialized_tree {
+            self.expanded_dirs = all_dirs.iter().cloned().collect();
+            self.tree_root_expanded = true;
+            self.initialized_tree = true;
+        } else {
+            let known: HashSet<String> = all_dirs.into_iter().collect();
+            self.expanded_dirs.retain(|path| known.contains(path));
+        }
+
+        if let Some(selected_path) = self.selected_path.as_ref() {
+            self.tree_root_expanded = true;
+            expand_parent_dirs(&mut self.expanded_dirs, selected_path);
+        } else if let Some(selected) = self.selected_file
+            && let Some(file) = self.files.get(selected)
+        {
+            self.tree_root_expanded = true;
+            expand_parent_dirs(&mut self.expanded_dirs, &file.path);
+        }
+
+        self.tree_dirty = true;
+    }
+
+    pub(crate) fn toggle_root(&mut self, recursive: bool) {
+        if self.tree_root_expanded {
+            self.tree_root_expanded = false;
+
+            if recursive {
+                self.expanded_dirs.clear();
+            }
+        } else {
+            self.tree_root_expanded = true;
+        }
+
+        self.tree_dirty = true;
+    }
+
+    pub(crate) fn toggle_dir(&mut self, path: &str, recursive: bool) {
+        if self.expanded_dirs.contains(path) {
+            self.expanded_dirs.remove(path);
+
+            if recursive {
+                let prefix = format!("{path}/");
+                self.expanded_dirs.retain(|dir| !dir.starts_with(&prefix));
+            }
+        } else {
+            self.expanded_dirs.insert(path.to_owned());
+        }
+        self.tree_dirty = true;
+    }
+
+    pub(crate) fn queue_refresh(&mut self) -> Task<Message> {
+        if self.refresh_in_flight {
+            self.refresh_queued = true;
+            Task::none()
+        } else {
+            self.refresh_in_flight = true;
+            self.refresh_queued = false;
+            let repo = self.repo_path.clone();
+            Task::perform(async move { load_changed_files(repo) }, Message::FilesLoaded)
+        }
+    }
+
+    pub(crate) fn finish_refresh(&mut self) -> Task<Message> {
+        self.refresh_in_flight = false;
+
+        if self.refresh_queued {
+            self.refresh_queued = false;
+            self.queue_refresh()
+        } else {
+            Task::none()
+        }
+    }
+
+    pub(crate) fn next_diff_request(&mut self) -> u64 {
+        self.active_diff_request = self.active_diff_request.wrapping_add(1);
+        self.active_diff_request
+    }
+
+    pub(crate) fn next_project_search_request(&mut self) -> u64 {
+        let Some(search) = self.project_search.as_mut() else {
+            return 0;
+        };
+
+        search.request_id = search.request_id.wrapping_add(1);
+        search.request_id
+    }
+
+    pub(crate) fn queue_project_search(&mut self) {
+        if let Some(search) = self.project_search.as_mut() {
+            search.pending_run_at =
+                Some(Instant::now() + Duration::from_millis(SEARCH_DEBOUNCE_MS));
+            search.searching = false;
+        }
+    }
+}

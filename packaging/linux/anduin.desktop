@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Anduin
+GenericName=Git GUI
+Comment=Git GUI for coding agents and worktrees
+Exec=Anduin
+Icon=anduin
+Terminal=false
+Categories=Development;
+Keywords=git;gui;worktree;diff;
+StartupNotify=true

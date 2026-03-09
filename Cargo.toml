@@ -1,0 +1,93 @@
+[package]
+name = "anduin"
+version = "0.1.0"
+edition = "2024"
+description = "A Git GUI optimized for coding agents and git worktrees"
+license = "MIT"
+
+[[bin]]
+name = "Anduin"
+path = "src/main.rs"
+
+[dependencies]
+iced = { git = "https://github.com/iced-rs/iced", rev = "b655cb6ebf4a71ea16a4460bb987cb7c1bd0760e", default-features = false, features = ["tokio", "tiny-skia", "crisp", "web-colors", "linux-theme-detection", "x11", "wayland"] }
+iced-code-editor = "0.3.6"
+gix = { version = "0.72", default-features = false, features = ["status", "worktree-mutation", "blob-diff", "index"] }
+anyhow = "1"
+bstr = "1"
+directories = "5"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+unidiff = "0.3"
+notify = "8.1.0"
+rfd = "0.16"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+fork = "0.6"
+
+[package.metadata.bundle]
+name = "Anduin"
+identifier = "dev.anduin.anduin"
+icon = [
+    "assets/icons/32x32.png",
+    "assets/icons/128x128.png",
+    "assets/icons/128x128@2x.png",
+    "assets/icons/256x256.png",
+    "assets/icons/256x256@2x.png",
+    "assets/icons/512x512.png",
+    "assets/icons/512x512@2x.png",
+]
+category = "Developer Tool"
+short_description = "Git GUI for coding agents and worktrees"
+long_description = """
+Anduin is a fast desktop Git GUI built with Rust and Iced.
+It is designed for coding-agent workflows, repositories with worktrees,
+and focused diff inspection with light and dark theme support.
+"""
+copyright = "Copyright (c) 2026 Anduin contributors"
+linux_use_terminal = false
+osx_minimum_system_version = "11.0"
+osx_info_plist_exts = ["packaging/macos/Info.plist.ext"]
+
+[package.metadata.bundle.bin.Anduin]
+name = "Anduin"
+identifier = "dev.anduin.anduin"
+icon = [
+    "assets/icons/32x32.png",
+    "assets/icons/128x128.png",
+    "assets/icons/128x128@2x.png",
+    "assets/icons/256x256.png",
+    "assets/icons/256x256@2x.png",
+    "assets/icons/512x512.png",
+    "assets/icons/512x512@2x.png",
+]
+category = "Developer Tool"
+short_description = "Git GUI for coding agents and worktrees"
+long_description = """
+Anduin is a fast desktop Git GUI built with Rust and Iced.
+It is designed for coding-agent workflows, repositories with worktrees,
+and focused diff inspection with light and dark theme support.
+"""
+copyright = "Copyright (c) 2026 Anduin contributors"
+linux_use_terminal = false
+osx_minimum_system_version = "11.0"
+osx_info_plist_exts = ["packaging/macos/Info.plist.ext"]
+
+[patch.crates-io]
+iced-code-editor = { path = "vendor/iced-code-editor" }
+
+[lints.clippy]
+perf = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+absolute_paths = "deny"
+str_to_string = "deny"
+use_self = "deny"
+missing_docs_in_private_items = "allow"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
