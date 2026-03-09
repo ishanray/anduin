@@ -95,5 +95,11 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::CurrentBranchFetched(result) => {
             repo::handle_current_branch_fetched(state, result)
         }
+        Message::OpenProjectPicker => repo::handle_open_project_picker(state),
+        Message::CloseProjectPicker => repo::handle_close_project_picker(state),
+        Message::ProjectPickerFilterChanged(filter) => {
+            repo::handle_project_picker_filter_changed(state, filter)
+        }
+        Message::SwitchProject(repo) => repo::handle_switch_project(state, repo),
     }
 }

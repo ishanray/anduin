@@ -6,8 +6,8 @@ use crate::actions::{
     unstage_files,
 };
 use crate::app::{
-    ActivePane, BranchPicker, CommitComposer, Message, ProjectSearch, SidebarTarget, State,
-    StatusTone,
+    ActivePane, BranchPicker, CommitComposer, Message, ProjectPicker, ProjectSearch, SidebarTarget,
+    State, StatusTone,
 };
 use crate::git;
 use crate::search::SEARCH_DEBOUNCE_MS;
@@ -127,6 +127,7 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
     state.commit_composer = None;
     state.project_search = None;
     state.branch_picker = None;
+    state.project_picker = None;
     state.pending_diff_jump = None;
     state.sidebar_scroll_offset = 0.0;
     state.sidebar_viewport_height = 0.0;
@@ -204,6 +205,10 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
         return Task::none();
     }
 
+    if state.is_project_picker_open() {
+        return handle_project_picker_key_event(state, event);
+    }
+
     if state.is_branch_picker_open() {
         return handle_branch_picker_key_event(state, event);
     }
@@ -227,6 +232,7 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
                 .map(Message::DiffEditor)
         }
         Some(ShortcutAction::OpenBranchPicker) => update(state, Message::OpenBranchPicker),
+        Some(ShortcutAction::OpenProjectPicker) => update(state, Message::OpenProjectPicker),
         Some(ShortcutAction::CloseActive) => {
             if state.active_pane == ActivePane::Diff && state.diff_editor.is_search_open() {
                 state
@@ -539,6 +545,83 @@ pub(crate) fn handle_current_branch_fetched(
     Task::none()
 }
 
+pub(crate) fn handle_open_project_picker(state: &mut State) -> Task<Message> {
+    if state.project_picker.is_some() {
+        return handle_close_project_picker(state);
+    }
+
+    let repos = state.recent_repos.clone();
+    let current = state.repo_path.to_string_lossy().into_owned();
+    let picker = ProjectPicker::new(repos, current);
+    let input_id = picker.input_id.clone();
+    state.project_picker = Some(picker);
+    focus(input_id)
+}
+
+pub(crate) fn handle_close_project_picker(state: &mut State) -> Task<Message> {
+    state.project_picker = None;
+    Task::none()
+}
+
+pub(crate) fn handle_project_picker_filter_changed(
+    state: &mut State,
+    filter: String,
+) -> Task<Message> {
+    if let Some(picker) = state.project_picker.as_mut() {
+        picker.filter = filter;
+        picker.selected_index = 0;
+    }
+    Task::none()
+}
+
+pub(crate) fn handle_project_picker_key_event(
+    state: &mut State,
+    event: keyboard::Event,
+) -> Task<Message> {
+    let keyboard::Event::KeyPressed { key, .. } = &event else {
+        return Task::none();
+    };
+
+    match key.as_ref() {
+        keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
+            if let Some(picker) = state.project_picker.as_mut() {
+                let count = picker.filtered_repos().len();
+                if count > 0 {
+                    picker.selected_index = (picker.selected_index + 1).min(count - 1);
+                }
+            }
+            Task::none()
+        }
+        keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
+            if let Some(picker) = state.project_picker.as_mut() {
+                picker.selected_index = picker.selected_index.saturating_sub(1);
+            }
+            Task::none()
+        }
+        keyboard::Key::Named(keyboard::key::Named::Enter) => {
+            let repo = state.project_picker.as_ref().and_then(|picker| {
+                let filtered = picker.filtered_repos();
+                filtered.get(picker.selected_index).map(|s| s.to_string())
+            });
+            if let Some(repo) = repo {
+                state.project_picker = None;
+                update(state, Message::RepoOpened(Some(PathBuf::from(repo))))
+            } else {
+                Task::none()
+            }
+        }
+        keyboard::Key::Named(keyboard::key::Named::Escape) => {
+            handle_close_project_picker(state)
+        }
+        _ => Task::none(),
+    }
+}
+
+pub(crate) fn handle_switch_project(state: &mut State, repo: String) -> Task<Message> {
+    state.project_picker = None;
+    update(state, Message::RepoOpened(Some(PathBuf::from(repo))))
+}
+
 fn handle_project_search_keyboard_event(
     state: &mut State,
     event: &keyboard::Event,
@@ -591,7 +674,7 @@ fn handle_project_search_keyboard_event(
 fn handle_commit_keyboard_event(state: &mut State, event: &keyboard::Event) -> Task<Message> {
     match shortcut_action_for_event(current_shortcut_platform(), event) {
         Some(ShortcutAction::CloseActive) => update(state, Message::CloseCommitComposer),
-        Some(ShortcutAction::OpenProject | ShortcutAction::OpenDiff | ShortcutAction::OpenBranchPicker) => Task::none(),
+        Some(ShortcutAction::OpenProject | ShortcutAction::OpenDiff | ShortcutAction::OpenBranchPicker | ShortcutAction::OpenProjectPicker) => Task::none(),
         None => {
             let keyboard::Event::KeyPressed { key, modifiers, .. } = event else {
                 return Task::none();

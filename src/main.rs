@@ -153,6 +153,7 @@ fn boot() -> (State, Task<Message>) {
         show_shortcuts_help: false,
         current_branch: None,
         branch_picker: None,
+        project_picker: None,
         recent_repos,
     };
 

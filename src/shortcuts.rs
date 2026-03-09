@@ -12,6 +12,7 @@ pub(crate) enum ShortcutAction {
     OpenDiff,
     OpenProject,
     OpenBranchPicker,
+    OpenProjectPicker,
     CloseActive,
 }
 
@@ -59,6 +60,8 @@ pub(crate) fn shortcut_action_for_key(
                 }
             } else if c.eq_ignore_ascii_case("b") && !modifiers.shift() {
                 Some(ShortcutAction::OpenBranchPicker)
+            } else if c.eq_ignore_ascii_case("p") && !modifiers.shift() {
+                Some(ShortcutAction::OpenProjectPicker)
             } else {
                 None
             }
@@ -180,6 +183,27 @@ mod tests {
                 keyboard::Modifiers::LOGO,
             ),
             None
+        );
+    }
+
+    #[test]
+    fn cmd_p_opens_project_picker() {
+        let command = keyboard::Modifiers::LOGO;
+        assert_eq!(
+            shortcut_action_for_key(
+                ShortcutPlatform::Mac,
+                keyboard::Key::Character("p"),
+                command,
+            ),
+            Some(ShortcutAction::OpenProjectPicker)
+        );
+        assert_eq!(
+            shortcut_action_for_key(
+                ShortcutPlatform::Linux,
+                keyboard::Key::Character("p"),
+                keyboard::Modifiers::CTRL,
+            ),
+            Some(ShortcutAction::OpenProjectPicker)
         );
     }
 

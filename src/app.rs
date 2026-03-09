@@ -98,6 +98,7 @@ pub(crate) struct State {
     pub(crate) show_shortcuts_help: bool,
     pub(crate) current_branch: Option<String>,
     pub(crate) branch_picker: Option<BranchPicker>,
+    pub(crate) project_picker: Option<ProjectPicker>,
     pub(crate) recent_repos: Vec<String>,
 }
 
@@ -172,6 +173,10 @@ pub(crate) enum Message {
     SwitchBranch(String),
     BranchSwitched(Result<(), String>),
     CurrentBranchFetched(Result<String, String>),
+    OpenProjectPicker,
+    CloseProjectPicker,
+    ProjectPickerFilterChanged(String),
+    SwitchProject(String),
 }
 
 impl ThemeMode {
@@ -254,6 +259,59 @@ impl BranchPicker {
                 prefix.push(b.as_str());
             } else if lower.contains(&filter_lower) {
                 rest.push(b.as_str());
+            }
+        }
+
+        prefix.extend(rest);
+        prefix
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProjectPicker {
+    pub(crate) repos: Vec<String>,
+    pub(crate) current: String,
+    pub(crate) filter: String,
+    pub(crate) selected_index: usize,
+    pub(crate) input_id: Id,
+}
+
+impl ProjectPicker {
+    pub(crate) fn new(repos: Vec<String>, current: String) -> Self {
+        Self {
+            repos,
+            current,
+            filter: String::new(),
+            selected_index: 0,
+            input_id: Id::unique(),
+        }
+    }
+
+    pub(crate) fn filtered_repos(&self) -> Vec<&str> {
+        let non_current: Vec<&str> = self
+            .repos
+            .iter()
+            .filter(|r| *r != &self.current)
+            .map(String::as_str)
+            .collect();
+
+        if self.filter.is_empty() {
+            return non_current;
+        }
+
+        let filter_lower = self.filter.to_lowercase();
+        let mut prefix = Vec::new();
+        let mut rest = Vec::new();
+
+        for repo in non_current {
+            let name = repo.rsplit('/').next().unwrap_or(repo);
+            let name_lower = name.to_lowercase();
+            let path_lower = repo.to_lowercase();
+
+            if name_lower.starts_with(&filter_lower) {
+                prefix.push(repo);
+            } else if path_lower.contains(&filter_lower) {
+                rest.push(repo);
             }
         }
 
@@ -366,6 +424,10 @@ impl State {
 
     pub(crate) fn is_branch_picker_open(&self) -> bool {
         self.branch_picker.is_some()
+    }
+
+    pub(crate) fn is_project_picker_open(&self) -> bool {
+        self.project_picker.is_some()
     }
 
     pub(crate) fn app_theme(&self) -> Theme {
