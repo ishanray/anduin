@@ -79,3 +79,15 @@ pub fn git_branch() -> Text<'static> {
 pub fn check() -> Text<'static> {
     icon('\u{e06e}')
 }
+
+pub fn user() -> Text<'static> {
+    icon('\u{e19c}')
+}
+
+pub fn git_commit_horizontal() -> Text<'static> {
+    icon('\u{e0d5}')
+}
+
+pub fn copy() -> Text<'static> {
+    icon('\u{e094}')
+}
