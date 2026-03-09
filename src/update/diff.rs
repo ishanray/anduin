@@ -1,4 +1,4 @@
-use crate::app::{DiffSearchCacheEntry, Message, State};
+use crate::app::{ActivePane, DiffSearchCacheEntry, Message, State};
 use crate::git;
 use iced::Task;
 use iced_code_editor::Message as EditorMessage;
@@ -42,7 +42,11 @@ pub(crate) fn handle_diff_loaded(
                         .remove(&current_diff.path)
                         .unwrap_or(0.0);
 
-                    let task = if let Some(line_number) = jump_line {
+                    if state.active_pane != ActivePane::Diff {
+                        state.diff_editor.lose_focus();
+                    }
+
+                    if let Some(line_number) = jump_line {
                         let mut task = state
                             .diff_editor
                             .reset(&current_diff.raw_patch)
@@ -66,9 +70,7 @@ pub(crate) fn handle_diff_loaded(
                             .diff_editor
                             .reset(&current_diff.raw_patch)
                             .map(Message::DiffEditor)
-                    };
-                    state.diff_editor.request_focus();
-                    task
+                    }
                 } else {
                     Task::none()
                 }
@@ -105,6 +107,54 @@ pub(crate) fn handle_diff_loaded(
 
 pub(crate) fn handle_diff_editor(state: &mut State, message: EditorMessage) -> Task<Message> {
     use iced_code_editor::Message as M;
+
+    match &message {
+        M::MouseClick(_) | M::CanvasFocusGained => {
+            state.active_pane = ActivePane::Diff;
+        }
+        M::CanvasFocusLost => {
+            state.active_pane = ActivePane::Sidebar;
+        }
+        M::MouseDrag(_)
+        | M::MouseRelease
+        | M::Scrolled(_)
+        | M::PageUp
+        | M::PageDown
+        | M::Home(_)
+        | M::End(_)
+        | M::ArrowKey(_, _)
+        | M::CtrlHome
+        | M::CtrlEnd
+        | M::Tick
+        | M::Copy
+        | M::OpenSearch
+        | M::CloseSearch
+        | M::SearchQueryChanged(_)
+        | M::ToggleCaseSensitive
+        | M::FindNext
+        | M::FindPrevious
+        | M::SearchDialogTab
+        | M::SearchDialogShiftTab
+        | M::CharacterInput(_)
+        | M::Backspace
+        | M::Delete
+        | M::Enter
+        | M::Tab
+        | M::Paste(_)
+        | M::DeleteSelection
+        | M::Undo
+        | M::Redo
+        | M::ImeOpened
+        | M::ImePreedit(_, _)
+        | M::ImeCommit(_)
+        | M::ImeClosed
+        | M::OpenSearchReplace
+        | M::ReplaceQueryChanged(_)
+        | M::ReplaceNext
+        | M::ReplaceAll
+        | M::FocusNavigationTab
+        | M::FocusNavigationShiftTab => {}
+    }
 
     match message {
         M::MouseClick(_)

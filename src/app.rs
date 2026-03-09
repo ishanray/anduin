@@ -40,13 +40,27 @@ pub(crate) struct CommitComposer {
     pub(crate) error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum SidebarTarget {
+    Root,
+    Dir(String),
+    File(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActivePane {
+    Sidebar,
+    Diff,
+}
+
 pub(crate) struct State {
     pub(crate) repo_path: PathBuf,
     pub(crate) files: Vec<ChangedFile>,
     pub(crate) selected_file: Option<usize>,
     pub(crate) selected_path: Option<String>,
-    pub(crate) selected_paths: HashSet<String>,
-    pub(crate) selection_anchor_path: Option<String>,
+    pub(crate) focused_sidebar_target: Option<SidebarTarget>,
+    pub(crate) selected_sidebar_targets: HashSet<SidebarTarget>,
+    pub(crate) selection_anchor_sidebar_target: Option<SidebarTarget>,
     pub(crate) current_diff: Option<FileDiff>,
     pub(crate) diff_editor: iced_code_editor::CodeEditor,
     pub(crate) theme_mode: ThemeMode,
@@ -67,7 +81,11 @@ pub(crate) struct State {
     pub(crate) project_search: Option<ProjectSearch>,
     pub(crate) pending_diff_jump: Option<PendingDiffJump>,
     pub(crate) sidebar_scroll_id: Id,
+    pub(crate) sidebar_scroll_offset: f32,
+    pub(crate) sidebar_viewport_height: f32,
+    pub(crate) active_pane: ActivePane,
     pub(crate) cached_theme: Theme,
+    pub(crate) show_shortcuts_help: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +137,7 @@ pub(crate) enum Message {
     RepoOpened(Option<PathBuf>),
     WatchEvent(watch::Event),
     KeyboardEvent(keyboard::Event),
+    SidebarScrolled(f32, f32),
     OpenProjectSearch,
     CloseProjectSearch,
     OpenCommitComposer,
@@ -133,6 +152,7 @@ pub(crate) enum Message {
     ProjectSearchResults(u64, Result<ProjectSearchResponse, String>),
     ProjectSearchScrollToFile(String),
     ProjectSearchJumpTo(String, usize),
+    ToggleShortcutsHelp,
 }
 
 impl ThemeMode {
@@ -305,56 +325,140 @@ impl State {
     }
 
     pub(crate) fn selected_file_count(&self) -> usize {
-        self.selected_paths.len()
+        self.selected_sidebar_targets.len()
     }
 
     pub(crate) fn has_explicit_selection(&self) -> bool {
-        !self.selected_paths.is_empty()
+        !self.selected_sidebar_targets.is_empty()
     }
 
-    pub(crate) fn is_path_selected(&self, path: &str) -> bool {
-        self.selected_paths.contains(path)
+    pub(crate) fn is_sidebar_target_selected(&self, target: &SidebarTarget) -> bool {
+        self.selected_sidebar_targets.contains(target)
     }
 
     pub(crate) fn clear_explicit_selection(&mut self) {
-        self.selected_paths.clear();
-        self.selection_anchor_path = None;
+        self.selected_sidebar_targets.clear();
+        self.selection_anchor_sidebar_target = None;
     }
 
-    pub(crate) fn retain_file_selection(&mut self) {
-        let known_paths: HashSet<&str> = self.files.iter().map(|file| file.path.as_str()).collect();
-        self.selected_paths
-            .retain(|path| known_paths.contains(path.as_str()));
-
-        if self
-            .selection_anchor_path
-            .as_deref()
-            .is_some_and(|path| !known_paths.contains(path))
-        {
-            self.selection_anchor_path = None;
+    pub(crate) fn sidebar_target_for_row(&self, row: &SidebarRow) -> SidebarTarget {
+        match row {
+            SidebarRow::Root { .. } => SidebarTarget::Root,
+            SidebarRow::Dir { path, .. } => SidebarTarget::Dir(path.clone()),
+            SidebarRow::File { index, .. } => self
+                .files
+                .get(*index)
+                .map(|file| SidebarTarget::File(file.path.clone()))
+                .unwrap_or(SidebarTarget::Root),
         }
     }
 
-    pub(crate) fn targeted_file_indices(&self) -> Vec<usize> {
-        if self.has_explicit_selection() {
-            self.files
-                .iter()
-                .enumerate()
-                .filter_map(|(index, file)| self.selected_paths.contains(&file.path).then_some(index))
-                .collect()
-        } else {
-            self.selected_file.into_iter().collect()
-        }
-    }
-
-    pub(crate) fn visible_file_indices(&self) -> Vec<usize> {
+    pub(crate) fn visible_sidebar_targets(&self) -> Vec<SidebarTarget> {
         self.cached_rows
             .iter()
-            .filter_map(|row| match row {
-                SidebarRow::File { index, .. } => Some(*index),
-                SidebarRow::Root { .. } | SidebarRow::Dir { .. } => None,
-            })
+            .map(|row| self.sidebar_target_for_row(row))
             .collect()
+    }
+
+    pub(crate) fn focused_sidebar_row_index(&self) -> Option<usize> {
+        let target = self.focused_sidebar_target.as_ref()?;
+        self.cached_rows
+            .iter()
+            .position(|row| self.sidebar_target_for_row(row) == *target)
+    }
+
+    pub(crate) fn retain_sidebar_selection(&mut self) {
+        let visible_targets: HashSet<SidebarTarget> = self.visible_sidebar_targets().into_iter().collect();
+        self.selected_sidebar_targets
+            .retain(|target| visible_targets.contains(target));
+
+        if self
+            .selection_anchor_sidebar_target
+            .as_ref()
+            .is_some_and(|target| !visible_targets.contains(target))
+        {
+            self.selection_anchor_sidebar_target = None;
+        }
+
+        if self
+            .focused_sidebar_target
+            .as_ref()
+            .is_some_and(|target| !visible_targets.contains(target))
+        {
+            self.focused_sidebar_target = None;
+        }
+    }
+
+    pub(crate) fn ensure_sidebar_focus(&mut self) {
+        if self.focused_sidebar_target.is_some() {
+            return;
+        }
+
+        self.focused_sidebar_target = self
+            .selected_path
+            .as_ref()
+            .map(|path| SidebarTarget::File(path.clone()))
+            .or_else(|| (!self.cached_rows.is_empty()).then_some(SidebarTarget::Root));
+    }
+
+    pub(crate) fn targeted_sidebar_targets(&self) -> Vec<SidebarTarget> {
+        if self.has_explicit_selection() {
+            self.visible_sidebar_targets()
+                .into_iter()
+                .filter(|target| self.selected_sidebar_targets.contains(target))
+                .collect()
+        } else {
+            self.focused_sidebar_target.clone().into_iter().collect()
+        }
+    }
+
+    pub(crate) fn file_paths_for_sidebar_target(&self, target: &SidebarTarget) -> Vec<String> {
+        match target {
+            SidebarTarget::Root => self.files.iter().map(|file| file.path.clone()).collect(),
+            SidebarTarget::Dir(path) => self
+                .files
+                .iter()
+                .filter(|file| is_path_within_dir(&file.path, path))
+                .map(|file| file.path.clone())
+                .collect(),
+            SidebarTarget::File(path) => self
+                .files
+                .iter()
+                .any(|file| file.path == *path)
+                .then_some(path.clone())
+                .into_iter()
+                .collect(),
+        }
+    }
+
+    pub(crate) fn targeted_file_paths(&self) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut paths = Vec::new();
+
+        for target in self.targeted_sidebar_targets() {
+            for path in self.file_paths_for_sidebar_target(&target) {
+                if seen.insert(path.clone()) {
+                    paths.push(path);
+                }
+            }
+        }
+
+        paths
+    }
+
+    pub(crate) fn are_all_paths_staged(&self, paths: &[String]) -> bool {
+        !paths.is_empty()
+            && paths.iter().all(|path| {
+                self.files
+                    .iter()
+                    .find(|file| file.path == *path)
+                    .is_some_and(ChangedFile::is_staged)
+            })
+    }
+
+    pub(crate) fn sidebar_target_is_fully_staged(&self, target: &SidebarTarget) -> bool {
+        let paths = self.file_paths_for_sidebar_target(target);
+        self.are_all_paths_staged(&paths)
     }
 
     pub(crate) fn set_status_message(&mut self, text: impl Into<String>, tone: StatusTone) {
@@ -395,6 +499,20 @@ impl State {
         }
 
         self.tree_dirty = false;
+    }
+
+    pub(crate) fn all_dir_paths(&self) -> Vec<String> {
+        let tree = self.build_tree();
+        let mut all_dirs = Vec::new();
+        tree.collect_dir_paths(&mut all_dirs);
+        all_dirs
+    }
+
+    pub(crate) fn descendant_dir_paths(&self, path: &str) -> Vec<String> {
+        self.all_dir_paths()
+            .into_iter()
+            .filter(|dir| is_path_within_dir(dir, path))
+            .collect()
     }
 
     pub(crate) fn ensure_rows_cached(&mut self) {
@@ -439,6 +557,10 @@ impl State {
             }
         } else {
             self.tree_root_expanded = true;
+
+            if recursive {
+                self.expanded_dirs = self.all_dir_paths().into_iter().collect();
+            }
         }
 
         self.tree_dirty = true;
@@ -454,6 +576,11 @@ impl State {
             }
         } else {
             self.expanded_dirs.insert(path.to_owned());
+
+            if recursive {
+                self.expanded_dirs
+                    .extend(self.descendant_dir_paths(path));
+            }
         }
         self.tree_dirty = true;
     }
@@ -502,4 +629,9 @@ impl State {
             search.searching = false;
         }
     }
+}
+
+fn is_path_within_dir(path: &str, dir: &str) -> bool {
+    path.strip_prefix(dir)
+        .is_some_and(|suffix| suffix.starts_with('/'))
 }

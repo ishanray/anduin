@@ -3,13 +3,14 @@ use crate::actions::{
     commit_staged_changes, load_changed_files, load_selected_diff, maybe_run_project_search,
     scroll_sidebar_to_selected, stage_all_files, stage_files, unstage_all_files, unstage_files,
 };
-use crate::app::{CommitComposer, Message, ProjectSearch, State, StatusTone};
+use crate::app::{ActivePane, CommitComposer, Message, ProjectSearch, SidebarTarget, State, StatusTone};
 use crate::git;
 use crate::search::SEARCH_DEBOUNCE_MS;
 use crate::shortcuts::{
     ShortcutAction, current_shortcut_platform, event_modifiers, is_primary_modifier_pressed,
     shortcut_action_for_event,
 };
+use crate::tree::SidebarRow;
 use crate::watch;
 use iced::Task;
 use iced::keyboard;
@@ -27,9 +28,10 @@ pub(crate) fn handle_files_loaded(
             state.files = files;
             state.diff_search_cache.clear();
             state.error = None;
-            state.retain_file_selection();
             state.sync_tree_state();
             state.ensure_rows_cached();
+            state.retain_sidebar_selection();
+            state.ensure_sidebar_focus();
 
             if state.project_search.is_some() {
                 state.queue_project_search();
@@ -65,6 +67,8 @@ pub(crate) fn handle_files_loaded(
 }
 
 pub(crate) fn handle_select_file(state: &mut State, index: usize) -> Task<Message> {
+    state.active_pane = ActivePane::Sidebar;
+    state.diff_editor.lose_focus();
     state.clear_explicit_selection();
     let diff_task = load_selected_diff(state, index);
     let scroll_task = scroll_sidebar_to_selected(state);
@@ -96,8 +100,9 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
     state.files.clear();
     state.selected_file = None;
     state.selected_path = None;
-    state.selected_paths.clear();
-    state.selection_anchor_path = None;
+    state.focused_sidebar_target = None;
+    state.selected_sidebar_targets.clear();
+    state.selection_anchor_sidebar_target = None;
     state.current_diff = None;
     state.diff_search_cache.clear();
     state.expanded_dirs.clear();
@@ -109,6 +114,10 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
     state.commit_composer = None;
     state.project_search = None;
     state.pending_diff_jump = None;
+    state.sidebar_scroll_offset = 0.0;
+    state.sidebar_viewport_height = 0.0;
+    state.active_pane = ActivePane::Sidebar;
+    state.diff_editor.lose_focus();
 
     state.persist_settings();
 
@@ -137,11 +146,37 @@ pub(crate) fn handle_watch_event(state: &mut State, event: watch::Event) -> Task
     }
 }
 
+pub(crate) fn handle_sidebar_scrolled(
+    state: &mut State,
+    offset: f32,
+    height: f32,
+) -> Task<Message> {
+    state.sidebar_scroll_offset = offset;
+    state.sidebar_viewport_height = height;
+    Task::none()
+}
+
 pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -> Task<Message> {
     let modifiers = event_modifiers(&event);
     let alt = modifiers.alt();
     if alt != state.alt_pressed {
         state.alt_pressed = alt;
+    }
+
+    // Handle `?` (Shift+/) to toggle shortcuts help, and swallow keys while it's open.
+    if let keyboard::Event::KeyPressed { key, .. } = &event {
+        if matches!(key.as_ref(), keyboard::Key::Character("?")) {
+            return update(state, Message::ToggleShortcutsHelp);
+        }
+        if state.show_shortcuts_help {
+            if matches!(key.as_ref(), keyboard::Key::Named(keyboard::key::Named::Escape)) {
+                state.show_shortcuts_help = false;
+            }
+            return Task::none();
+        }
+    }
+    if state.show_shortcuts_help {
+        return Task::none();
     }
 
     if state.project_search.is_some() {
@@ -154,26 +189,37 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
 
     match shortcut_action_for_event(current_shortcut_platform(), &event) {
         Some(ShortcutAction::OpenProject) => update(state, Message::OpenProjectSearch),
-        Some(ShortcutAction::OpenDiff) => state
-            .diff_editor
-            .update(&EditorMessage::OpenSearch)
-            .map(Message::DiffEditor),
+        Some(ShortcutAction::OpenDiff) => {
+            state.active_pane = ActivePane::Diff;
+            state.diff_editor.request_focus();
+            state
+                .diff_editor
+                .update(&EditorMessage::OpenSearch)
+                .map(Message::DiffEditor)
+        }
         Some(ShortcutAction::CloseActive) => {
-            if state.has_explicit_selection() {
+            if state.active_pane == ActivePane::Diff {
+                focus_sidebar(state)
+            } else if state.has_explicit_selection() {
                 state.clear_explicit_selection();
                 Task::none()
             } else {
-                state
-                    .diff_editor
-                    .update(&EditorMessage::CloseSearch)
-                    .map(Message::DiffEditor)
+                Task::none()
             }
         }
-        None => handle_file_list_keyboard_event(state, &event),
+        None => {
+            if state.active_pane == ActivePane::Sidebar {
+                handle_file_list_keyboard_event(state, &event)
+            } else {
+                Task::none()
+            }
+        }
     }
 }
 
 pub(crate) fn handle_open_project_search(state: &mut State) -> Task<Message> {
+    state.active_pane = ActivePane::Sidebar;
+    state.diff_editor.lose_focus();
     let mut search = state
         .project_search
         .take()
@@ -189,6 +235,8 @@ pub(crate) fn handle_open_project_search(state: &mut State) -> Task<Message> {
 }
 
 pub(crate) fn handle_open_commit_composer(state: &mut State) -> Task<Message> {
+    state.active_pane = ActivePane::Sidebar;
+    state.diff_editor.lose_focus();
     let mut composer = state
         .commit_composer
         .take()
@@ -201,7 +249,7 @@ pub(crate) fn handle_open_commit_composer(state: &mut State) -> Task<Message> {
 
 pub(crate) fn handle_close_commit_composer(state: &mut State) -> Task<Message> {
     state.commit_composer = None;
-    Task::none()
+    focus_sidebar(state)
 }
 
 pub(crate) fn handle_commit_summary_changed(state: &mut State, summary: String) -> Task<Message> {
@@ -318,12 +366,32 @@ fn handle_file_list_keyboard_event(state: &mut State, event: &keyboard::Event) -
         keyboard::Key::Named(keyboard::key::Named::ArrowUp)
             if modifiers_without_shift(*modifiers) =>
         {
-            navigate_visible_files(state, -1, modifiers.shift())
+            navigate_visible_rows(state, -1, modifiers.shift())
         }
         keyboard::Key::Named(keyboard::key::Named::ArrowDown)
             if modifiers_without_shift(*modifiers) =>
         {
-            navigate_visible_files(state, 1, modifiers.shift())
+            navigate_visible_rows(state, 1, modifiers.shift())
+        }
+        keyboard::Key::Named(keyboard::key::Named::ArrowLeft)
+            if modifiers_alt_only(*modifiers) =>
+        {
+            collapse_focused_row(state, true)
+        }
+        keyboard::Key::Named(keyboard::key::Named::ArrowRight)
+            if modifiers_alt_only(*modifiers) =>
+        {
+            expand_focused_row(state, true)
+        }
+        keyboard::Key::Named(keyboard::key::Named::ArrowLeft)
+            if modifiers_without_shift(*modifiers) =>
+        {
+            collapse_focused_row(state, false)
+        }
+        keyboard::Key::Named(keyboard::key::Named::ArrowRight)
+            if modifiers_without_shift(*modifiers) =>
+        {
+            expand_focused_row(state, false)
         }
         keyboard::Key::Named(keyboard::key::Named::Space) if modifiers_without_shift(*modifiers) => {
             toggle_stage_for_targeted_files(state)
@@ -347,80 +415,160 @@ fn handle_file_list_keyboard_event(state: &mut State, event: &keyboard::Event) -
     }
 }
 
-fn navigate_visible_files(state: &mut State, delta: isize, extend: bool) -> Task<Message> {
+fn navigate_visible_rows(state: &mut State, delta: isize, extend: bool) -> Task<Message> {
     state.ensure_rows_cached();
-    let visible_files = state.visible_file_indices();
-    if visible_files.is_empty() {
+    state.retain_sidebar_selection();
+    state.ensure_sidebar_focus();
+
+    let visible_targets = state.visible_sidebar_targets();
+    if visible_targets.is_empty() {
         return Task::none();
     }
 
-    let current_pos = state
-        .selected_file
-        .and_then(|index| visible_files.iter().position(|visible| *visible == index))
-        .unwrap_or(0);
-
-    let next_pos = current_pos.saturating_add_signed(delta).min(visible_files.len() - 1);
-    if next_pos == current_pos && state.selected_file.is_some() {
+    let current_pos = state.focused_sidebar_row_index().unwrap_or(0);
+    let next_pos = current_pos.saturating_add_signed(delta).min(visible_targets.len() - 1);
+    if next_pos == current_pos {
         return Task::none();
     }
 
-    let next_index = visible_files[next_pos];
+    let next_target = visible_targets[next_pos].clone();
 
     if extend {
-        let Some(anchor_path) = state
-            .selection_anchor_path
+        let anchor_target = state
+            .selection_anchor_sidebar_target
             .clone()
-            .or_else(|| state.selected_path.clone())
-            .or_else(|| state.files.get(next_index).map(|file| file.path.clone()))
+            .or_else(|| state.focused_sidebar_target.clone())
+            .unwrap_or_else(|| visible_targets[current_pos].clone());
+
+        let Some(anchor_pos) = visible_targets.iter().position(|target| *target == anchor_target)
         else {
             return Task::none();
         };
 
-        let Some(anchor_pos) = visible_files.iter().position(|index| {
-            state
-                .files
-                .get(*index)
-                .is_some_and(|file| file.path == anchor_path)
-        }) else {
-            return Task::none();
-        };
-
         let range = if anchor_pos <= next_pos {
-            &visible_files[anchor_pos..=next_pos]
+            &visible_targets[anchor_pos..=next_pos]
         } else {
-            &visible_files[next_pos..=anchor_pos]
+            &visible_targets[next_pos..=anchor_pos]
         };
 
-        state.selection_anchor_path = Some(anchor_path);
-        state.selected_paths = range
-            .iter()
-            .filter_map(|index| state.files.get(*index).map(|file| file.path.clone()))
-            .collect();
+        state.selection_anchor_sidebar_target = Some(anchor_target);
+        state.selected_sidebar_targets = range.iter().cloned().collect();
     } else {
         state.clear_explicit_selection();
     }
 
-    let diff_task = load_selected_diff(state, next_index);
-    let scroll_task = scroll_sidebar_to_selected(state);
-    Task::batch([diff_task, scroll_task])
+    focus_sidebar_target(state, next_target)
+}
+
+fn focus_sidebar_target(state: &mut State, target: SidebarTarget) -> Task<Message> {
+    state.active_pane = ActivePane::Sidebar;
+    state.diff_editor.lose_focus();
+    state.focused_sidebar_target = Some(target.clone());
+
+    match target {
+        SidebarTarget::File(path) => {
+            let Some(index) = state.files.iter().position(|file| file.path == path) else {
+                return scroll_sidebar_to_selected(state);
+            };
+            let diff_task = load_selected_diff(state, index);
+            let scroll_task = scroll_sidebar_to_selected(state);
+            Task::batch([diff_task, scroll_task])
+        }
+        SidebarTarget::Root | SidebarTarget::Dir(_) => scroll_sidebar_to_selected(state),
+    }
+}
+
+fn expand_focused_row(state: &mut State, recursive: bool) -> Task<Message> {
+    let Some(target) = state.focused_sidebar_target.clone() else {
+        return Task::none();
+    };
+
+    match target {
+        SidebarTarget::Root => {
+            if recursive {
+                state.tree_root_expanded = true;
+                state.expanded_dirs.extend(state.all_dir_paths());
+                state.tree_dirty = true;
+                state.ensure_rows_cached();
+                state.retain_sidebar_selection();
+                return scroll_sidebar_to_selected(state);
+            }
+
+            if !state.tree_root_expanded {
+                state.toggle_root(false);
+                state.ensure_rows_cached();
+                state.retain_sidebar_selection();
+                return scroll_sidebar_to_selected(state);
+            }
+
+            focus_first_visible_child(state)
+        }
+        SidebarTarget::Dir(path) => {
+            if recursive {
+                state.expanded_dirs.insert(path.clone());
+                state.expanded_dirs.extend(state.descendant_dir_paths(&path));
+                state.tree_dirty = true;
+                state.ensure_rows_cached();
+                state.retain_sidebar_selection();
+                return scroll_sidebar_to_selected(state);
+            }
+
+            if !state.expanded_dirs.contains(&path) {
+                state.toggle_dir(&path, false);
+                state.ensure_rows_cached();
+                state.retain_sidebar_selection();
+                return scroll_sidebar_to_selected(state);
+            }
+
+            focus_first_visible_child(state)
+        }
+        SidebarTarget::File(_) => Task::none(),
+    }
+}
+
+fn collapse_focused_row(state: &mut State, recursive: bool) -> Task<Message> {
+    let Some(target) = state.focused_sidebar_target.clone() else {
+        return Task::none();
+    };
+
+    match target {
+        SidebarTarget::Root => {
+            if state.tree_root_expanded {
+                state.toggle_root(recursive);
+                state.ensure_rows_cached();
+                state.retain_sidebar_selection();
+            }
+            scroll_sidebar_to_selected(state)
+        }
+        SidebarTarget::Dir(path) => {
+            if state.expanded_dirs.contains(&path) {
+                state.toggle_dir(&path, recursive);
+                state.ensure_rows_cached();
+                state.retain_sidebar_selection();
+                scroll_sidebar_to_selected(state)
+            } else if let Some(parent) = parent_dir_target(&path) {
+                focus_sidebar_target(state, parent)
+            } else {
+                focus_sidebar_target(state, SidebarTarget::Root)
+            }
+        }
+        SidebarTarget::File(path) => {
+            if let Some(parent) = file_parent_target(&path) {
+                focus_sidebar_target(state, parent)
+            } else {
+                focus_sidebar_target(state, SidebarTarget::Root)
+            }
+        }
+    }
 }
 
 fn toggle_stage_for_targeted_files(state: &mut State) -> Task<Message> {
-    let target_indices = state.targeted_file_indices();
-    if target_indices.is_empty() {
+    let paths = state.targeted_file_paths();
+    if paths.is_empty() {
         return Task::none();
     }
 
-    let target_files: Vec<_> = target_indices
-        .into_iter()
-        .filter_map(|index| state.files.get(index).cloned())
-        .collect();
-    if target_files.is_empty() {
-        return Task::none();
-    }
-
-    let all_staged = target_files.iter().all(|file| file.is_staged());
-    let paths: Vec<String> = target_files.iter().map(|file| file.path.clone()).collect();
+    let all_staged = state.are_all_paths_staged(&paths);
     let count = paths.len();
     let repo_path = state.repo_path.clone();
 
@@ -484,8 +632,56 @@ fn unstage_all(state: &mut State) -> Task<Message> {
     )
 }
 
+fn focus_sidebar(state: &mut State) -> Task<Message> {
+    state.active_pane = ActivePane::Sidebar;
+    state
+        .diff_editor
+        .update(&EditorMessage::CanvasFocusLost)
+        .map(Message::DiffEditor)
+}
+
+fn focus_first_visible_child(state: &mut State) -> Task<Message> {
+    let Some(current_index) = state.focused_sidebar_row_index() else {
+        return Task::none();
+    };
+    let Some(current_row) = state.cached_rows.get(current_index) else {
+        return Task::none();
+    };
+    let current_depth = sidebar_row_depth(current_row);
+    let Some(next_row) = state.cached_rows.get(current_index + 1) else {
+        return Task::none();
+    };
+    if sidebar_row_depth(next_row) <= current_depth {
+        return Task::none();
+    }
+
+    let next_target = state.sidebar_target_for_row(next_row);
+    focus_sidebar_target(state, next_target)
+}
+
+fn sidebar_row_depth(row: &SidebarRow) -> usize {
+    match row {
+        SidebarRow::Root { .. } => 0,
+        SidebarRow::Dir { depth, .. } | SidebarRow::File { depth, .. } => *depth,
+    }
+}
+
+fn parent_dir_target(path: &str) -> Option<SidebarTarget> {
+    path.rsplit_once('/')
+        .map(|(parent, _)| SidebarTarget::Dir(parent.to_owned()))
+}
+
+fn file_parent_target(path: &str) -> Option<SidebarTarget> {
+    path.rsplit_once('/')
+        .map(|(parent, _)| SidebarTarget::Dir(parent.to_owned()))
+}
+
 fn modifiers_without_shift(modifiers: keyboard::Modifiers) -> bool {
     !modifiers.control() && !modifiers.alt() && !modifiers.logo()
+}
+
+fn modifiers_alt_only(modifiers: keyboard::Modifiers) -> bool {
+    modifiers.alt() && !modifiers.shift() && !modifiers.control() && !modifiers.logo()
 }
 
 fn no_shortcut_modifiers(modifiers: keyboard::Modifiers) -> bool {

@@ -18,10 +18,10 @@ mod views;
 mod watch;
 
 use actions::load_changed_files;
-use app::{Message, State, ThemeMode};
+use app::{ActivePane, Message, State, ThemeMode};
 use iced::event as iced_event;
 use iced::time;
-use iced::widget::{Id, container, row, text};
+use iced::widget::{Id, Stack, container, row, text};
 use iced::{Element, Fill, Font, Subscription, Task};
 use iced_code_editor::{CodeEditor, Message as EditorMessage, theme as editor_theme};
 use lucide::LUCIDE_FONT_BYTES;
@@ -32,6 +32,7 @@ use std::time::Duration;
 use update::update;
 use views::diff::view_diff;
 use views::project_search::view_project_search;
+use views::shortcuts_help::view_shortcuts_help;
 use views::sidebar::view_sidebar;
 
 const MONO: Font = Font::MONOSPACE;
@@ -106,7 +107,7 @@ fn boot() -> (State, Task<Message>) {
     diff_editor.set_font(MONO);
     diff_editor.set_font_size(13.0, true);
     diff_editor.set_smooth_scroll_enabled(true);
-    diff_editor.request_focus();
+    diff_editor.lose_focus();
 
     let cached_theme = theme_mode.app_theme();
     let state = State {
@@ -114,8 +115,9 @@ fn boot() -> (State, Task<Message>) {
         files: Vec::new(),
         selected_file: None,
         selected_path: None,
-        selected_paths: HashSet::new(),
-        selection_anchor_path: None,
+        focused_sidebar_target: None,
+        selected_sidebar_targets: HashSet::new(),
+        selection_anchor_sidebar_target: None,
         current_diff: None,
         diff_editor,
         theme_mode,
@@ -136,7 +138,11 @@ fn boot() -> (State, Task<Message>) {
         project_search: None,
         pending_diff_jump: None,
         sidebar_scroll_id: Id::unique(),
+        sidebar_scroll_offset: 0.0,
+        sidebar_viewport_height: 0.0,
+        active_pane: ActivePane::Sidebar,
         cached_theme,
+        show_shortcuts_help: false,
     };
 
     let task = Task::perform(
@@ -193,9 +199,21 @@ fn view(state: &State) -> Element<'_, Message> {
     let sidebar = view_sidebar(state);
     let diff_view = view_diff(state);
 
-    row![
+    let main_content: Element<'_, Message> = row![
         container(sidebar).width(320),
         container(diff_view).width(Fill)
     ]
-    .into()
+    .into();
+
+    if state.show_shortcuts_help {
+        let overlay = view_shortcuts_help(state);
+        Stack::new()
+            .push(main_content)
+            .push(overlay)
+            .width(Fill)
+            .height(Fill)
+            .into()
+    } else {
+        main_content
+    }
 }

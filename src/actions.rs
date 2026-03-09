@@ -1,9 +1,10 @@
-use crate::app::{DiffSearchCacheEntry, Message, ProjectSearchResponse, State};
+use crate::app::{DiffSearchCacheEntry, Message, ProjectSearchResponse, SidebarTarget, State};
 use crate::git;
 use crate::git::diff::{ChangedFile, FileDiff, FileStatus};
 use crate::search::{self, ProjectSearchResult, find_match_line_indices_with_lower};
 use crate::tree::expand_parent_dirs;
-use crate::views::sidebar::selected_sidebar_scroll_offset;
+use crate::views::sidebar::selected_sidebar_row_bounds;
+use crate::SIDEBAR_ROW_HEIGHT;
 use iced::Task;
 use iced::widget::operation::scroll_to;
 use iced::widget::scrollable;
@@ -137,6 +138,7 @@ pub(crate) fn load_selected_diff(state: &mut State, index: usize) -> Task<Messag
 
     state.selected_file = Some(index);
     state.selected_path = Some(file.path.clone());
+    state.focused_sidebar_target = Some(SidebarTarget::File(file.path.clone()));
     state.tree_root_expanded = true;
     expand_parent_dirs(&mut state.expanded_dirs, &file.path);
     state.tree_dirty = true;
@@ -168,7 +170,33 @@ pub(crate) fn load_selected_diff(state: &mut State, index: usize) -> Task<Messag
 }
 
 pub(crate) fn scroll_sidebar_to_selected(state: &State) -> Task<Message> {
-    let Some(y) = selected_sidebar_scroll_offset(state) else {
+    let Some((row_top, row_bottom)) = selected_sidebar_row_bounds(state) else {
+        return Task::none();
+    };
+
+    if state.sidebar_viewport_height <= 0.0 {
+        return scroll_to(
+            state.sidebar_scroll_id.clone(),
+            scrollable::AbsoluteOffset {
+                x: 0.0,
+                y: row_top,
+            },
+        );
+    }
+
+    let reveal_padding = SIDEBAR_ROW_HEIGHT;
+    let visible_top = state.sidebar_scroll_offset;
+    let visible_bottom = visible_top + state.sidebar_viewport_height;
+
+    let target_y = if row_top < visible_top + reveal_padding {
+        Some((row_top - reveal_padding).max(0.0))
+    } else if row_bottom > visible_bottom - reveal_padding {
+        Some((row_bottom - state.sidebar_viewport_height + reveal_padding).max(0.0))
+    } else {
+        None
+    };
+
+    let Some(y) = target_y else {
         return Task::none();
     };
 
