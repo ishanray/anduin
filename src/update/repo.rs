@@ -133,6 +133,11 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
     state.active_pane = ActivePane::Sidebar;
     state.diff_editor.lose_focus();
 
+    let repo_str = repo_path.to_string_lossy().into_owned();
+    state.recent_repos.retain(|p| p != &repo_str);
+    state.recent_repos.insert(0, repo_str);
+    state.recent_repos.truncate(20);
+
     state.persist_settings();
 
     state.refresh_in_flight = true;

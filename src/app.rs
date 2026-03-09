@@ -98,6 +98,7 @@ pub(crate) struct State {
     pub(crate) show_shortcuts_help: bool,
     pub(crate) current_branch: Option<String>,
     pub(crate) branch_picker: Option<BranchPicker>,
+    pub(crate) recent_repos: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -375,7 +376,7 @@ impl State {
         let settings = config::Settings {
             theme: self.theme_mode.preference(),
             repo_path: Some(self.repo_path.to_string_lossy().into_owned()),
-            recent_repos: Vec::new(),
+            recent_repos: self.recent_repos.clone(),
         };
 
         if let Err(error) = config::save_settings(&settings) {

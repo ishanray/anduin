@@ -100,6 +100,12 @@ fn boot() -> (State, Task<Message>) {
             git::diff::find_repo_root(&cwd).unwrap_or(cwd)
         });
 
+    let mut recent_repos = settings.recent_repos;
+    let repo_str = repo_path.to_string_lossy().into_owned();
+    recent_repos.retain(|p| p != &repo_str);
+    recent_repos.insert(0, repo_str);
+    recent_repos.truncate(20);
+
     eprintln!("[anduin] boot repo_path={}", repo_path.display(),);
 
     let theme_mode = ThemeMode::from_preference(settings.theme);
@@ -147,6 +153,7 @@ fn boot() -> (State, Task<Message>) {
         show_shortcuts_help: false,
         current_branch: None,
         branch_picker: None,
+        recent_repos,
     };
 
     let branch_task = {
