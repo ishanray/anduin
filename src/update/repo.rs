@@ -207,6 +207,7 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
                 .update(&EditorMessage::OpenSearch)
                 .map(Message::DiffEditor)
         }
+        Some(ShortcutAction::OpenBranchPicker) => Task::none(),
         Some(ShortcutAction::CloseActive) => {
             if state.active_pane == ActivePane::Diff && state.diff_editor.is_search_open() {
                 state
@@ -417,7 +418,7 @@ fn handle_project_search_keyboard_event(
 fn handle_commit_keyboard_event(state: &mut State, event: &keyboard::Event) -> Task<Message> {
     match shortcut_action_for_event(current_shortcut_platform(), event) {
         Some(ShortcutAction::CloseActive) => update(state, Message::CloseCommitComposer),
-        Some(ShortcutAction::OpenProject | ShortcutAction::OpenDiff) => Task::none(),
+        Some(ShortcutAction::OpenProject | ShortcutAction::OpenDiff | ShortcutAction::OpenBranchPicker) => Task::none(),
         None => {
             let keyboard::Event::KeyPressed { key, modifiers, .. } = event else {
                 return Task::none();

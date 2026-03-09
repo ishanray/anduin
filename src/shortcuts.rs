@@ -11,6 +11,7 @@ pub(crate) enum ShortcutPlatform {
 pub(crate) enum ShortcutAction {
     OpenDiff,
     OpenProject,
+    OpenBranchPicker,
     CloseActive,
 }
 
@@ -56,6 +57,8 @@ pub(crate) fn shortcut_action_for_key(
                 } else {
                     Some(ShortcutAction::OpenDiff)
                 }
+            } else if c.eq_ignore_ascii_case("b") && !modifiers.shift() {
+                Some(ShortcutAction::OpenBranchPicker)
             } else {
                 None
             }
