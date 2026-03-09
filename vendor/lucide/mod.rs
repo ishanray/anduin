@@ -71,3 +71,11 @@ pub fn file() -> Text<'static> {
 pub fn ellipsis() -> Text<'static> {
     icon('\u{e0ba}')
 }
+
+pub fn git_branch() -> Text<'static> {
+    icon('\u{e0d4}')
+}
+
+pub fn check() -> Text<'static> {
+    icon('\u{e06e}')
+}
