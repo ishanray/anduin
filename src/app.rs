@@ -375,6 +375,7 @@ impl State {
         let settings = config::Settings {
             theme: self.theme_mode.preference(),
             repo_path: Some(self.repo_path.to_string_lossy().into_owned()),
+            recent_repos: Vec::new(),
         };
 
         if let Err(error) = config::save_settings(&settings) {

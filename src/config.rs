@@ -38,6 +38,8 @@ pub struct Settings {
     pub theme: ThemePreference,
     #[serde(default)]
     pub repo_path: Option<String>,
+    #[serde(default)]
+    pub recent_repos: Vec<String>,
 }
 
 pub fn load_settings() -> Result<Settings> {
@@ -51,6 +53,14 @@ pub fn load_settings() -> Result<Settings> {
     let settings =
         toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))?;
     Ok(settings)
+}
+
+const MAX_RECENT_REPOS: usize = 20;
+
+pub fn push_recent_repo(settings: &mut Settings, repo_path: &str) {
+    settings.recent_repos.retain(|p| p != repo_path);
+    settings.recent_repos.insert(0, repo_path.to_owned());
+    settings.recent_repos.truncate(MAX_RECENT_REPOS);
 }
 
 pub fn save_settings(settings: &Settings) -> Result<()> {
