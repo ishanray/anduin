@@ -72,7 +72,6 @@ pub(crate) enum SidebarTab {
 #[derive(Debug, Clone)]
 pub(crate) struct Commit {
     pub(crate) hash: String,
-    #[allow(dead_code)] // will be used for commit detail display
     pub(crate) short_hash: String,
     pub(crate) author: String,
     pub(crate) date: String,
@@ -119,17 +118,12 @@ pub(crate) struct State {
     pub(crate) sidebar_tab: SidebarTab,
     pub(crate) commits: Vec<Commit>,
     pub(crate) selected_commit: Option<usize>,
-    #[allow(dead_code)] // will be used in Task 5
     pub(crate) commit_files: Vec<ChangedFile>,
     pub(crate) commits_loading: bool,
     pub(crate) commits_exhausted: bool,
-    #[allow(dead_code)] // will be used in Task 5
     pub(crate) history_selected_file: Option<usize>,
-    #[allow(dead_code)] // will be used in Task 5
     pub(crate) history_selected_path: Option<String>,
-    #[allow(dead_code)] // will be used in Task 5
     pub(crate) history_diff: Option<FileDiff>,
-    #[allow(dead_code)] // will be used in Task 5
     pub(crate) history_commit_header: Option<Commit>,
 }
 
@@ -209,21 +203,13 @@ pub(crate) enum Message {
     CloseProjectPicker,
     ProjectPickerFilterChanged(String),
     SwitchProject(String),
-    #[allow(dead_code)]
     SwitchSidebarTab(SidebarTab),
-    #[allow(dead_code)]
     CommitsLoaded(Result<Vec<Commit>, String>),
-    #[allow(dead_code)]
     SelectCommit(usize),
-    #[allow(dead_code)]
     CommitFilesLoaded(Result<Vec<ChangedFile>, String>),
-    #[allow(dead_code)]
     SelectHistoryFile(usize),
-    #[allow(dead_code)]
     HistoryDiffLoaded(u64, Result<FileDiff, String>),
-    #[allow(dead_code)]
     LoadMoreCommits,
-    #[allow(dead_code)]
     CopyCommitHash(String),
 }
 

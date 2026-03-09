@@ -248,7 +248,6 @@ pub fn git_switch_branch(repo_path: &Path, branch: &str) -> Result<()> {
 }
 
 /// Fetch commit log entries as `(hash, author, relative_date, subject)` tuples.
-#[allow(dead_code)]
 pub fn git_log(
     repo_path: &Path,
     count: usize,
@@ -284,7 +283,6 @@ pub fn git_log(
 }
 
 /// List files changed in a given commit as `(status_char, path)` tuples.
-#[allow(dead_code)]
 pub fn git_commit_files(repo_path: &Path, sha: &str) -> Result<Vec<(char, String)>> {
     let output = Command::new("git")
         .args(["diff-tree", "--no-commit-id", "-r", "--name-status", sha])
@@ -312,7 +310,6 @@ pub fn git_commit_files(repo_path: &Path, sha: &str) -> Result<Vec<(char, String
 /// Get the diff for a single file within a specific commit.
 ///
 /// Falls back to `git show` for the initial commit where `sha^` does not exist.
-#[allow(dead_code)]
 pub fn git_diff_commit_file(repo_path: &Path, sha: &str, file_path: &str) -> Result<String> {
     // Try normal parent..commit diff first
     let output = Command::new("git")
