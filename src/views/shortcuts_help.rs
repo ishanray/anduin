@@ -98,6 +98,11 @@ pub(crate) fn view_shortcuts_help(state: &State) -> Element<'_, Message> {
             "Switch branch",
             palette
         ),
+        shortcut_row(
+            vec![kbd(cmd, palette), kbd("P", palette)],
+            "Switch project",
+            palette
+        ),
         Space::new().height(4),
         // Global
         shortcut_row(
