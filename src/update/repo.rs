@@ -1,8 +1,9 @@
 use super::update;
 use crate::actions::{
     commit_staged_changes, fetch_current_branch, list_branches, load_changed_files,
-    load_selected_diff, maybe_run_project_search, scroll_sidebar_to_selected, stage_all_files,
-    stage_files, switch_branch, unstage_all_files, unstage_files,
+    load_selected_diff, load_selected_diff_without_focus_change, maybe_run_project_search,
+    scroll_sidebar_to_selected, stage_all_files, stage_files, switch_branch, unstage_all_files,
+    unstage_files,
 };
 use crate::app::{
     ActivePane, BranchPicker, CommitComposer, Message, ProjectSearch, SidebarTarget, State,
@@ -732,7 +733,24 @@ fn focus_sidebar_target(state: &mut State, target: SidebarTarget) -> Task<Messag
             let scroll_task = scroll_sidebar_to_selected(state);
             Task::batch([diff_task, scroll_task])
         }
-        SidebarTarget::Root | SidebarTarget::Dir(_) => scroll_sidebar_to_selected(state),
+        SidebarTarget::Root => {
+            let diff_task = if let Some(file_idx) = state.first_file_index_for_root() {
+                load_selected_diff_without_focus_change(state, file_idx)
+            } else {
+                Task::none()
+            };
+            let scroll_task = scroll_sidebar_to_selected(state);
+            Task::batch([diff_task, scroll_task])
+        }
+        SidebarTarget::Dir(ref path) => {
+            let diff_task = if let Some(file_idx) = state.first_file_index_for_dir(path) {
+                load_selected_diff_without_focus_change(state, file_idx)
+            } else {
+                Task::none()
+            };
+            let scroll_task = scroll_sidebar_to_selected(state);
+            Task::batch([diff_task, scroll_task])
+        }
     }
 }
 

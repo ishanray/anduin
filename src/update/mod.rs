@@ -2,7 +2,7 @@ mod diff;
 mod repo;
 mod search;
 
-use crate::actions::maybe_run_project_search;
+use crate::actions::{load_selected_diff_without_focus_change, maybe_run_project_search};
 use crate::app::{ActivePane, Message, SidebarTarget, State};
 use iced::Task;
 
@@ -19,7 +19,11 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
             state.ensure_rows_cached();
             state.retain_sidebar_selection();
             state.ensure_sidebar_focus();
-            Task::none()
+            if let Some(file_idx) = state.first_file_index_for_root() {
+                load_selected_diff_without_focus_change(state, file_idx)
+            } else {
+                Task::none()
+            }
         }
         Message::ToggleDir(path, recursive) => {
             state.active_pane = ActivePane::Sidebar;
@@ -30,7 +34,11 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
             state.ensure_rows_cached();
             state.retain_sidebar_selection();
             state.ensure_sidebar_focus();
-            Task::none()
+            if let Some(file_idx) = state.first_file_index_for_dir(&path) {
+                load_selected_diff_without_focus_change(state, file_idx)
+            } else {
+                Task::none()
+            }
         }
         Message::DiffLoaded(request_id, result) => {
             diff::handle_diff_loaded(state, request_id, result)

@@ -169,6 +169,53 @@ pub(crate) fn load_selected_diff(state: &mut State, index: usize) -> Task<Messag
     )
 }
 
+/// Load a file's diff without changing the focused sidebar target.
+/// Used when a directory is focused and we want to preview its first child's diff.
+pub(crate) fn load_selected_diff_without_focus_change(
+    state: &mut State,
+    index: usize,
+) -> Task<Message> {
+    let Some(file) = state.files.get(index).cloned() else {
+        return Task::none();
+    };
+
+    if let Some(prev_path) = state.selected_path.as_ref() {
+        let scroll_y = state.diff_editor.viewport_scroll();
+        if scroll_y > 0.0 {
+            state.scroll_positions.insert(prev_path.clone(), scroll_y);
+        } else {
+            state.scroll_positions.remove(prev_path);
+        }
+    }
+
+    state.selected_file = Some(index);
+    state.selected_path = Some(file.path.clone());
+
+    let request_id = state.next_diff_request();
+    let path = file.path.clone();
+    let status = file.status;
+
+    if let Some(cache_entry) = state.diff_search_cache.get(&path) {
+        let raw_diff = cache_entry.raw_diff.clone();
+        return Task::perform(
+            async move {
+                Ok(git::diff::parse_unified_diff(
+                    raw_diff.as_ref(),
+                    &path,
+                    status,
+                ))
+            },
+            move |result| Message::DiffLoaded(request_id, result),
+        );
+    }
+
+    let repo = state.repo_path.clone();
+    Task::perform(
+        async move { load_file_diff(repo, path, status) },
+        move |result| Message::DiffLoaded(request_id, result),
+    )
+}
+
 pub(crate) fn scroll_sidebar_to_selected(state: &State) -> Task<Message> {
     let Some((row_top, row_bottom)) = selected_sidebar_row_bounds(state) else {
         return Task::none();
