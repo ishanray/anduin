@@ -1,4 +1,4 @@
-use crate::app::{Message, SidebarTab, State, StatusTone};
+use crate::app::{HistoryFocus, Message, SidebarTab, State, StatusTone};
 use crate::git::diff::FileStatus;
 use crate::tree::SidebarRow;
 use crate::{MONO, PANEL_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT, TREE_INDENT, lucide};
@@ -485,8 +485,21 @@ fn view_commit_list(state: &State) -> Element<'_, Message> {
         items.push(load_more);
     }
 
-    scrollable(column(items).spacing(1).padding([4, 8]))
+    let commit_list_focused = state.history_focus == HistoryFocus::CommitList;
+    let focus_color = palette.primary.base.color;
+
+    let list = scrollable(column(items).spacing(1).padding([4, 8])).height(Fill);
+
+    container(list)
         .height(Fill)
+        .width(Fill)
+        .style(move |_: &Theme| {
+            container::Style::default().border(iced::Border {
+                color: if commit_list_focused { focus_color } else { iced::Color::TRANSPARENT },
+                width: if commit_list_focused { 2.0 } else { 0.0 },
+                radius: 0.0.into(),
+            })
+        })
         .into()
 }
 

@@ -1,5 +1,6 @@
 use crate::app::{
-    ActivePane, Message, ProjectSearchResponse, SidebarTab, SidebarTarget, State, ThemeMode,
+    ActivePane, ChangesFocus, HistoryFocus, Message, ProjectSearchResponse, SidebarTab,
+    SidebarTarget, State, ThemeMode,
 };
 use crate::git::diff::{ChangedFile, FileStatus};
 use crate::search::{ContextLine, MatchContext, ProjectSearchResult};
@@ -62,6 +63,8 @@ fn test_state(files: Vec<ChangedFile>) -> State {
         history_selected_path: None,
         history_diff: None,
         history_commit_header: None,
+        history_focus: HistoryFocus::CommitList,
+        changes_focus: ChangesFocus::FileList,
     };
 
     state.sync_tree_state();

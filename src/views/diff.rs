@@ -1,4 +1,4 @@
-use crate::app::{CommitComposer, Message, SidebarTab, State};
+use crate::app::{ChangesFocus, CommitComposer, HistoryFocus, Message, SidebarTab, State};
 use crate::git::diff::FileStatus;
 use crate::views::project_search::view_search_content;
 use crate::{MONO, PANEL_HEADER_HEIGHT, lucide};
@@ -45,6 +45,8 @@ pub(crate) fn view_diff(state: &State) -> Element<'_, Message> {
 fn view_changes_diff<'a>(state: &'a State, muted_fg: iced::Color) -> Element<'a, Message> {
     let theme = state.app_theme();
     let palette = theme.extended_palette();
+    let diff_focused = state.changes_focus == ChangesFocus::DiffView;
+    let focus_color = palette.primary.base.color;
 
     match &state.current_diff {
         Some(file) => {
@@ -65,13 +67,24 @@ fn view_changes_diff<'a>(state: &'a State, muted_fg: iced::Color) -> Element<'a,
 
             let editor = state.diff_editor.view().map(Message::DiffEditor);
 
-            column![
+            let content = column![
                 header,
                 rule::horizontal(1),
                 container(editor).width(Fill).height(Fill)
             ]
-            .height(Fill)
-            .into()
+            .height(Fill);
+
+            container(content)
+                .width(Fill)
+                .height(Fill)
+                .style(move |_: &Theme| {
+                    container::Style::default().border(iced::Border {
+                        color: if diff_focused { focus_color } else { iced::Color::TRANSPARENT },
+                        width: if diff_focused { 2.0 } else { 0.0 },
+                        radius: 0.0.into(),
+                    })
+                })
+                .into()
         }
         None => container(text("Select a file to view diff").size(16).color(muted_fg))
             .center(Fill)
@@ -135,19 +148,22 @@ fn view_history_diff<'a>(state: &'a State, muted_fg: iced::Color) -> Element<'a,
 
     // File list (left pane)
     let file_list = view_history_file_list(state, muted_fg, palette);
+    let file_list_focused = state.history_focus == HistoryFocus::FileList;
+    let focus_color = palette.primary.base.color;
 
     let file_list_pane = container(scrollable(file_list).height(Fill))
         .width(Length::Fixed(200.0))
         .height(Fill)
         .style(move |_: &Theme| {
             container::Style::default().background(header_bg).border(iced::Border {
-                color: border_color,
-                width: 0.0,
+                color: if file_list_focused { focus_color } else { border_color },
+                width: if file_list_focused { 2.0 } else { 0.0 },
                 radius: 0.0.into(),
             })
         });
 
     // Right pane: diff editor or empty
+    let diff_focused = state.history_focus == HistoryFocus::DiffView;
     let right_pane: Element<'a, Message> = if state.history_diff.is_some() {
         let diff_header_fg = header_fg;
         let diff_header_bg = header_bg;
@@ -173,14 +189,25 @@ fn view_history_diff<'a>(state: &'a State, muted_fg: iced::Color) -> Element<'a,
 
         let editor = state.diff_editor.view().map(Message::DiffEditor);
 
-        column![
+        let diff_content = column![
             path_header,
             rule::horizontal(1),
             container(editor).width(Fill).height(Fill)
         ]
         .width(Fill)
-        .height(Fill)
-        .into()
+        .height(Fill);
+
+        container(diff_content)
+            .width(Fill)
+            .height(Fill)
+            .style(move |_: &Theme| {
+                container::Style::default().border(iced::Border {
+                    color: if diff_focused { focus_color } else { iced::Color::TRANSPARENT },
+                    width: if diff_focused { 2.0 } else { 0.0 },
+                    radius: 0.0.into(),
+                })
+            })
+            .into()
     } else {
         container(
             text("Select a file to view its diff")

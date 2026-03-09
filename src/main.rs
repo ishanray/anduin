@@ -21,7 +21,7 @@ mod watch;
 mod tests;
 
 use actions::{fetch_current_branch, load_changed_files};
-use app::{ActivePane, Message, SidebarTab, State, ThemeMode};
+use app::{ActivePane, ChangesFocus, HistoryFocus, Message, SidebarTab, State, ThemeMode};
 use iced::event as iced_event;
 use iced::time;
 use iced::widget::{Id, Stack, container, row, text};
@@ -165,6 +165,8 @@ fn boot() -> (State, Task<Message>) {
         history_selected_path: None,
         history_diff: None,
         history_commit_header: None,
+        history_focus: HistoryFocus::CommitList,
+        changes_focus: ChangesFocus::FileList,
     };
 
     let branch_task = {

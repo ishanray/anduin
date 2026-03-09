@@ -1,5 +1,5 @@
 use crate::actions::{load_commit_file_diff, load_commit_files, load_commits};
-use crate::app::{Commit, Message, SidebarTab, State, StatusTone};
+use crate::app::{ChangesFocus, Commit, HistoryFocus, Message, SidebarTab, State, StatusTone};
 use crate::git::diff::{ChangedFile, FileDiff};
 use iced::Task;
 
@@ -14,13 +14,20 @@ pub(crate) fn handle_switch_sidebar_tab(state: &mut State, tab: SidebarTab) -> T
 
     match tab {
         SidebarTab::History => {
+            state.history_focus = HistoryFocus::CommitList;
             if state.commits.is_empty() && !state.commits_loading {
                 load_commits_page(state, 0)
+            } else if let Some(index) = state.selected_commit {
+                // Re-load diff for the already-selected commit (cleared on tab switch)
+                handle_select_commit(state, index)
+            } else if !state.commits.is_empty() {
+                handle_select_commit(state, 0)
             } else {
                 Task::none()
             }
         }
         SidebarTab::Changes => {
+            state.changes_focus = ChangesFocus::FileList;
             state.history_diff = None;
             state.history_commit_header = None;
             Task::none()
@@ -38,7 +45,12 @@ pub(crate) fn handle_commits_loaded(
             if new_commits.len() < COMMITS_PER_PAGE {
                 state.commits_exhausted = true;
             }
+            let was_empty = state.commits.is_empty();
             state.commits.extend(new_commits);
+            // Auto-select first commit on initial load
+            if was_empty && !state.commits.is_empty() && state.selected_commit.is_none() {
+                return handle_select_commit(state, 0);
+            }
         }
         Err(error) => {
             state.set_status_message(error, StatusTone::Error);
@@ -48,6 +60,7 @@ pub(crate) fn handle_commits_loaded(
 }
 
 pub(crate) fn handle_select_commit(state: &mut State, index: usize) -> Task<Message> {
+    state.history_focus = HistoryFocus::CommitList;
     state.selected_commit = Some(index);
     state.history_selected_file = None;
     state.history_selected_path = None;
@@ -87,6 +100,7 @@ pub(crate) fn handle_commit_files_loaded(
 }
 
 pub(crate) fn handle_select_history_file(state: &mut State, index: usize) -> Task<Message> {
+    state.history_focus = HistoryFocus::FileList;
     let Some(file) = state.commit_files.get(index).cloned() else {
         return Task::none();
     };

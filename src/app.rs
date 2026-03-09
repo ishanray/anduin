@@ -69,6 +69,19 @@ pub(crate) enum SidebarTab {
     History,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HistoryFocus {
+    CommitList,
+    FileList,
+    DiffView,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChangesFocus {
+    FileList,
+    DiffView,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Commit {
     pub(crate) hash: String,
@@ -125,6 +138,8 @@ pub(crate) struct State {
     pub(crate) history_selected_path: Option<String>,
     pub(crate) history_diff: Option<FileDiff>,
     pub(crate) history_commit_header: Option<Commit>,
+    pub(crate) history_focus: HistoryFocus,
+    pub(crate) changes_focus: ChangesFocus,
 }
 
 #[derive(Debug, Clone)]

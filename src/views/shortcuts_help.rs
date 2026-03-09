@@ -115,7 +115,13 @@ pub(crate) fn view_shortcuts_help(state: &State) -> Element<'_, Message> {
             "Project search",
             palette
         ),
-        shortcut_row(vec![kbd("Esc", palette)], "Close / Deselect", palette),
+        shortcut_row(
+            vec![kbd(cmd, palette), kbd("⇧", palette), kbd("[", palette), kbd("]", palette)],
+            "Switch tab",
+            palette
+        ),
+        shortcut_row(vec![kbd("Enter", palette)], "Focus deeper pane", palette),
+        shortcut_row(vec![kbd("Esc", palette)], "Focus shallower pane", palette),
         shortcut_row(vec![kbd("?", palette)], "Show this help", palette),
     ]
     .spacing(8);

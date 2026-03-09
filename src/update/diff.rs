@@ -1,4 +1,4 @@
-use crate::app::{ActivePane, DiffSearchCacheEntry, Message, State};
+use crate::app::{ActivePane, ChangesFocus, DiffSearchCacheEntry, HistoryFocus, Message, SidebarTab, State};
 use crate::git;
 use iced::Task;
 use iced_code_editor::Message as EditorMessage;
@@ -111,6 +111,10 @@ pub(crate) fn handle_diff_editor(state: &mut State, message: EditorMessage) -> T
     match &message {
         M::MouseClick(_) | M::CanvasFocusGained => {
             state.active_pane = ActivePane::Diff;
+            match state.sidebar_tab {
+                SidebarTab::History => state.history_focus = HistoryFocus::DiffView,
+                SidebarTab::Changes => state.changes_focus = ChangesFocus::DiffView,
+            }
         }
         M::CanvasFocusLost => {
             state.active_pane = ActivePane::Sidebar;

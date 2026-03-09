@@ -6,8 +6,8 @@ use crate::actions::{
     unstage_files,
 };
 use crate::app::{
-    ActivePane, BranchPicker, CommitComposer, Message, ProjectPicker, ProjectSearch, SidebarTab,
-    SidebarTarget, State, StatusTone,
+    ActivePane, BranchPicker, ChangesFocus, CommitComposer, HistoryFocus, Message, ProjectPicker,
+    ProjectSearch, SidebarTab, SidebarTarget, State, StatusTone,
 };
 use crate::git;
 use crate::search::SEARCH_DEBOUNCE_MS;
@@ -81,6 +81,7 @@ pub(crate) fn handle_files_loaded(
 
 pub(crate) fn handle_select_file(state: &mut State, index: usize) -> Task<Message> {
     state.active_pane = ActivePane::Sidebar;
+    state.changes_focus = ChangesFocus::FileList;
     state.diff_editor.lose_focus();
     state.clear_explicit_selection();
     let diff_task = load_selected_diff(state, index);
@@ -145,6 +146,8 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
     state.history_selected_path = None;
     state.history_diff = None;
     state.history_commit_header = None;
+    state.history_focus = HistoryFocus::CommitList;
+    state.changes_focus = ChangesFocus::FileList;
 
     let repo_str = repo_path.to_string_lossy().into_owned();
     state.recent_repos.retain(|p| p != &repo_str);
@@ -237,6 +240,9 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
         Some(ShortcutAction::OpenProject) => update(state, Message::OpenProjectSearch),
         Some(ShortcutAction::OpenDiff) => {
             state.active_pane = ActivePane::Diff;
+            if state.sidebar_tab == SidebarTab::Changes {
+                state.changes_focus = ChangesFocus::DiffView;
+            }
             state.diff_editor.request_focus();
             state
                 .diff_editor
@@ -245,23 +251,63 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
         }
         Some(ShortcutAction::OpenBranchPicker) => update(state, Message::OpenBranchPicker),
         Some(ShortcutAction::OpenProjectPicker) => update(state, Message::OpenProjectPicker),
+        Some(ShortcutAction::PreviousTab) => {
+            let target = match state.sidebar_tab {
+                SidebarTab::Changes => SidebarTab::History,
+                SidebarTab::History => SidebarTab::Changes,
+            };
+            update(state, Message::SwitchSidebarTab(target))
+        }
+        Some(ShortcutAction::NextTab) => {
+            let target = match state.sidebar_tab {
+                SidebarTab::Changes => SidebarTab::History,
+                SidebarTab::History => SidebarTab::Changes,
+            };
+            update(state, Message::SwitchSidebarTab(target))
+        }
         Some(ShortcutAction::CloseActive) => {
-            if state.active_pane == ActivePane::Diff && state.diff_editor.is_search_open() {
-                state
-                    .diff_editor
-                    .update(&EditorMessage::CloseSearch)
-                    .map(Message::DiffEditor)
-            } else if state.active_pane == ActivePane::Diff {
-                focus_sidebar(state)
-            } else if state.has_explicit_selection() {
-                state.clear_explicit_selection();
-                Task::none()
+            if state.sidebar_tab == SidebarTab::History {
+                match state.history_focus {
+                    HistoryFocus::DiffView => {
+                        state.history_focus = HistoryFocus::FileList;
+                        state.diff_editor.lose_focus();
+                        Task::none()
+                    }
+                    HistoryFocus::FileList => {
+                        state.history_focus = HistoryFocus::CommitList;
+                        Task::none()
+                    }
+                    HistoryFocus::CommitList => Task::none(),
+                }
             } else {
-                Task::none()
+                // Changes tab
+                match state.changes_focus {
+                    ChangesFocus::DiffView => {
+                        state.changes_focus = ChangesFocus::FileList;
+                        focus_sidebar(state)
+                    }
+                    ChangesFocus::FileList => {
+                        if state.active_pane == ActivePane::Diff
+                            && state.diff_editor.is_search_open()
+                        {
+                            state
+                                .diff_editor
+                                .update(&EditorMessage::CloseSearch)
+                                .map(Message::DiffEditor)
+                        } else if state.has_explicit_selection() {
+                            state.clear_explicit_selection();
+                            Task::none()
+                        } else {
+                            Task::none()
+                        }
+                    }
+                }
             }
         }
         None => {
-            if state.active_pane == ActivePane::Sidebar {
+            if state.sidebar_tab == SidebarTab::History {
+                handle_history_keyboard_event(state, &event)
+            } else if state.active_pane == ActivePane::Sidebar {
                 handle_file_list_keyboard_event(state, &event)
             } else {
                 Task::none()
@@ -546,6 +592,7 @@ pub(crate) fn handle_branch_switched(
             state.history_selected_path = None;
             state.history_diff = None;
             state.history_commit_header = None;
+            state.history_focus = HistoryFocus::CommitList;
 
             state.queue_refresh()
         }
@@ -697,7 +744,7 @@ fn handle_project_search_keyboard_event(
 fn handle_commit_keyboard_event(state: &mut State, event: &keyboard::Event) -> Task<Message> {
     match shortcut_action_for_event(current_shortcut_platform(), event) {
         Some(ShortcutAction::CloseActive) => update(state, Message::CloseCommitComposer),
-        Some(ShortcutAction::OpenProject | ShortcutAction::OpenDiff | ShortcutAction::OpenBranchPicker | ShortcutAction::OpenProjectPicker) => Task::none(),
+        Some(ShortcutAction::OpenProject | ShortcutAction::OpenDiff | ShortcutAction::OpenBranchPicker | ShortcutAction::OpenProjectPicker | ShortcutAction::PreviousTab | ShortcutAction::NextTab) => Task::none(),
         None => {
             let keyboard::Event::KeyPressed { key, modifiers, .. } = event else {
                 return Task::none();
@@ -713,6 +760,82 @@ fn handle_commit_keyboard_event(state: &mut State, event: &keyboard::Event) -> T
             } else {
                 Task::none()
             }
+        }
+    }
+}
+
+fn handle_history_keyboard_event(state: &mut State, event: &keyboard::Event) -> Task<Message> {
+    let keyboard::Event::KeyPressed { key, .. } = event else {
+        return Task::none();
+    };
+
+    match state.history_focus {
+        HistoryFocus::CommitList => match key.as_ref() {
+            keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
+                let count = state.commits.len();
+                if count == 0 {
+                    return Task::none();
+                }
+                let current = state.selected_commit.unwrap_or(0);
+                let next = (current + 1).min(count - 1);
+                if next != current {
+                    update(state, Message::SelectCommit(next))
+                } else {
+                    Task::none()
+                }
+            }
+            keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
+                let current = state.selected_commit.unwrap_or(0);
+                let next = current.saturating_sub(1);
+                if next != current {
+                    update(state, Message::SelectCommit(next))
+                } else {
+                    Task::none()
+                }
+            }
+            keyboard::Key::Named(keyboard::key::Named::Enter) => {
+                if state.selected_commit.is_some() && !state.commit_files.is_empty() {
+                    state.history_focus = HistoryFocus::FileList;
+                }
+                Task::none()
+            }
+            _ => Task::none(),
+        },
+        HistoryFocus::FileList => match key.as_ref() {
+            keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
+                let count = state.commit_files.len();
+                if count == 0 {
+                    return Task::none();
+                }
+                let current = state.history_selected_file.unwrap_or(0);
+                let next = (current + 1).min(count - 1);
+                if next != current {
+                    update(state, Message::SelectHistoryFile(next))
+                } else {
+                    Task::none()
+                }
+            }
+            keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
+                let current = state.history_selected_file.unwrap_or(0);
+                let next = current.saturating_sub(1);
+                if next != current {
+                    update(state, Message::SelectHistoryFile(next))
+                } else {
+                    Task::none()
+                }
+            }
+            keyboard::Key::Named(keyboard::key::Named::Enter) => {
+                if state.history_diff.is_some() {
+                    state.history_focus = HistoryFocus::DiffView;
+                    state.diff_editor.request_focus();
+                }
+                Task::none()
+            }
+            _ => Task::none(),
+        },
+        HistoryFocus::DiffView => {
+            // Diff editor handles its own keys (scrolling etc.)
+            Task::none()
         }
     }
 }
@@ -770,6 +893,16 @@ fn handle_file_list_keyboard_event(state: &mut State, event: &keyboard::Event) -
             if no_shortcut_modifiers(*modifiers) && c.eq_ignore_ascii_case("c") =>
         {
             update(state, Message::OpenCommitComposer)
+        }
+        keyboard::Key::Named(keyboard::key::Named::Enter)
+            if no_shortcut_modifiers(*modifiers) =>
+        {
+            if state.current_diff.is_some() {
+                state.changes_focus = ChangesFocus::DiffView;
+                state.active_pane = ActivePane::Diff;
+                state.diff_editor.request_focus();
+            }
+            Task::none()
         }
         keyboard::Key::Named(keyboard::key::Named::Escape) => {
             if state.has_explicit_selection() {
