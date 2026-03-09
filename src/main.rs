@@ -21,7 +21,7 @@ mod watch;
 mod tests;
 
 use actions::{fetch_current_branch, load_changed_files};
-use app::{ActivePane, Message, State, ThemeMode};
+use app::{ActivePane, Message, SidebarTab, State, ThemeMode};
 use iced::event as iced_event;
 use iced::time;
 use iced::widget::{Id, Stack, container, row, text};
@@ -155,6 +155,16 @@ fn boot() -> (State, Task<Message>) {
         branch_picker: None,
         project_picker: None,
         recent_repos,
+        sidebar_tab: SidebarTab::Changes,
+        commits: Vec::new(),
+        selected_commit: None,
+        commit_files: Vec::new(),
+        commits_loading: false,
+        commits_exhausted: false,
+        history_selected_file: None,
+        history_selected_path: None,
+        history_diff: None,
+        history_commit_header: None,
     };
 
     let branch_task = {

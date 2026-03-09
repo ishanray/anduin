@@ -1,5 +1,5 @@
 use crate::app::{
-    ActivePane, Message, ProjectSearchResponse, SidebarTarget, State, ThemeMode,
+    ActivePane, Message, ProjectSearchResponse, SidebarTab, SidebarTarget, State, ThemeMode,
 };
 use crate::git::diff::{ChangedFile, FileStatus};
 use crate::search::{ContextLine, MatchContext, ProjectSearchResult};
@@ -52,6 +52,16 @@ fn test_state(files: Vec<ChangedFile>) -> State {
         branch_picker: None,
         project_picker: None,
         recent_repos: Vec::new(),
+        sidebar_tab: SidebarTab::Changes,
+        commits: Vec::new(),
+        selected_commit: None,
+        commit_files: Vec::new(),
+        commits_loading: false,
+        commits_exhausted: false,
+        history_selected_file: None,
+        history_selected_path: None,
+        history_diff: None,
+        history_commit_header: None,
     };
 
     state.sync_tree_state();
