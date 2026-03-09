@@ -66,14 +66,13 @@ pub(crate) enum ActivePane {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SidebarTab {
     Changes,
-    #[allow(dead_code)] // will be used in Task 3
     History,
 }
 
-#[allow(dead_code)] // will be used in Task 3+
 #[derive(Debug, Clone)]
 pub(crate) struct Commit {
     pub(crate) hash: String,
+    #[allow(dead_code)] // will be used for commit detail display
     pub(crate) short_hash: String,
     pub(crate) author: String,
     pub(crate) date: String,
@@ -117,17 +116,12 @@ pub(crate) struct State {
     pub(crate) branch_picker: Option<BranchPicker>,
     pub(crate) project_picker: Option<ProjectPicker>,
     pub(crate) recent_repos: Vec<String>,
-    #[allow(dead_code)] // will be used in Task 3
     pub(crate) sidebar_tab: SidebarTab,
-    #[allow(dead_code)] // will be used in Task 4
     pub(crate) commits: Vec<Commit>,
-    #[allow(dead_code)] // will be used in Task 4
     pub(crate) selected_commit: Option<usize>,
     #[allow(dead_code)] // will be used in Task 5
     pub(crate) commit_files: Vec<ChangedFile>,
-    #[allow(dead_code)] // will be used in Task 4
     pub(crate) commits_loading: bool,
-    #[allow(dead_code)] // will be used in Task 4
     pub(crate) commits_exhausted: bool,
     #[allow(dead_code)] // will be used in Task 5
     pub(crate) history_selected_file: Option<usize>,

@@ -1,4 +1,4 @@
-use crate::app::{Message, State, StatusTone};
+use crate::app::{Message, SidebarTab, State, StatusTone};
 use crate::git::diff::FileStatus;
 use crate::tree::SidebarRow;
 use crate::{MONO, PANEL_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT, TREE_INDENT, lucide};
@@ -285,30 +285,99 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
             .into()
     };
 
-    let selected_suffix = if state.selected_file_count() > 1 {
-        format!(" • {} selected", state.selected_file_count())
-    } else {
-        String::new()
-    };
-    let summary = format!(
-        "{} changed • {} staged{}",
-        state.files.len(),
-        state.staged_file_count(),
-        selected_suffix
-    );
-
-    let mut footer_content = column![text(summary).size(12).font(MONO).color(fg)].spacing(6);
-
-    if let Some(status) = state.status_message.as_ref() {
-        let color = status_color(palette, status.tone);
-        footer_content =
-            footer_content.push(text(status.text.as_str()).size(12).font(MONO).color(color));
-    }
-
-    let footer = container(footer_content).padding([10, 14]);
-
     let sidebar_bg = palette.background.base.color;
     let sidebar_border = palette.background.strong.color;
+
+    // Tab bar
+    let tab_bar = {
+        let primary_color = palette.primary.base.color;
+        let changes_active = state.sidebar_tab == SidebarTab::Changes;
+        let history_active = state.sidebar_tab == SidebarTab::History;
+
+        let changes_fg = if changes_active { primary_color } else { muted_fg };
+        let changes_underline = if changes_active { primary_color } else { iced::Color::TRANSPARENT };
+        let history_fg = if history_active { primary_color } else { muted_fg };
+        let history_underline = if history_active { primary_color } else { iced::Color::TRANSPARENT };
+
+        let changes_tab: Element<'_, Message> = mouse_area(column![
+            container(text("Changes").size(13).color(changes_fg)).padding([6, 12]),
+            container(Space::new().height(0))
+                .width(Fill)
+                .height(2)
+                .style(move |_: &Theme| {
+                    container::Style::default().background(changes_underline)
+                }),
+        ])
+        .on_press(Message::SwitchSidebarTab(SidebarTab::Changes))
+        .into();
+
+        let history_tab: Element<'_, Message> = mouse_area(column![
+            container(text("History").size(13).color(history_fg)).padding([6, 12]),
+            container(Space::new().height(0))
+                .width(Fill)
+                .height(2)
+                .style(move |_: &Theme| {
+                    container::Style::default().background(history_underline)
+                }),
+        ])
+        .on_press(Message::SwitchSidebarTab(SidebarTab::History))
+        .into();
+
+        container(
+            row![changes_tab, history_tab]
+                .spacing(0)
+                .align_y(iced::Alignment::Center),
+        )
+        .width(Fill)
+        .padding([0, 8])
+    };
+
+    // Main content: file list or commit list depending on active tab
+    let main_list: Element<'_, Message> = match state.sidebar_tab {
+        SidebarTab::Changes => file_list,
+        SidebarTab::History => view_commit_list(state),
+    };
+
+    // Footer varies by tab
+    let footer: Element<'_, Message> = match state.sidebar_tab {
+        SidebarTab::Changes => {
+            let selected_suffix = if state.selected_file_count() > 1 {
+                format!(" • {} selected", state.selected_file_count())
+            } else {
+                String::new()
+            };
+            let summary = format!(
+                "{} changed • {} staged{}",
+                state.files.len(),
+                state.staged_file_count(),
+                selected_suffix
+            );
+
+            let mut footer_content =
+                column![text(summary).size(12).font(MONO).color(fg)].spacing(6);
+
+            if let Some(status) = state.status_message.as_ref() {
+                let color = status_color(palette, status.tone);
+                footer_content = footer_content
+                    .push(text(status.text.as_str()).size(12).font(MONO).color(color));
+            }
+
+            container(footer_content).padding([10, 14]).into()
+        }
+        SidebarTab::History => {
+            let count = state.commits.len();
+            let summary = if count == 0 && state.commits_loading {
+                "Loading commits…".to_owned()
+            } else if state.commits_exhausted {
+                format!("{count} commits (all loaded)")
+            } else {
+                format!("{count} commits loaded")
+            };
+            container(text(summary).size(12).font(MONO).color(fg))
+                .padding([10, 14])
+                .into()
+        }
+    };
 
     let mut sidebar_column = column![header, rule::horizontal(1)].height(Fill);
 
@@ -322,7 +391,9 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
         sidebar_column = sidebar_column.push(rule::horizontal(1));
     }
 
-    sidebar_column = sidebar_column.push(file_list);
+    sidebar_column = sidebar_column.push(tab_bar);
+    sidebar_column = sidebar_column.push(rule::horizontal(1));
+    sidebar_column = sidebar_column.push(main_list);
     sidebar_column = sidebar_column.push(rule::horizontal(1));
     sidebar_column = sidebar_column.push(footer);
 
@@ -338,6 +409,85 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
     })
     .height(Fill)
     .into()
+}
+
+fn view_commit_list(state: &State) -> Element<'_, Message> {
+    let theme = state.app_theme();
+    let palette = theme.extended_palette();
+    let fg = palette.background.base.text;
+    let muted_fg = palette.background.strong.text.scale_alpha(0.6);
+
+    if state.commits.is_empty() && !state.commits_loading {
+        return container(text("No commits").size(14).color(muted_fg))
+            .padding([8, 16])
+            .height(Fill)
+            .into();
+    }
+
+    let mut items: Vec<Element<'_, Message>> = state
+        .commits
+        .iter()
+        .enumerate()
+        .map(|(i, commit)| {
+            let is_selected = state.selected_commit == Some(i);
+            let item_bg = if is_selected {
+                palette.primary.weak.color
+            } else {
+                palette.background.weakest.color
+            };
+            let item_fg = if is_selected {
+                palette.primary.weak.text
+            } else {
+                fg
+            };
+
+            let message_line = text(commit.message.as_str())
+                .size(13)
+                .font(MONO)
+                .color(item_fg)
+                .wrapping(Wrapping::None);
+
+            let detail = format!("{} · {}", commit.author, commit.date);
+            let detail_line = text(detail).size(12).color(muted_fg).wrapping(Wrapping::None);
+
+            mouse_area(
+                container(
+                    column![message_line, detail_line].spacing(2),
+                )
+                .width(Fill)
+                .padding([6, 12])
+                .clip(true)
+                .style(move |_: &Theme| {
+                    container::Style::default().background(item_bg)
+                }),
+            )
+            .on_press(Message::SelectCommit(i))
+            .into()
+        })
+        .collect();
+
+    // Load more / loading indicator
+    if !state.commits_exhausted {
+        let load_more: Element<'_, Message> = if state.commits_loading {
+            container(text("Loading…").size(12).font(MONO).color(muted_fg))
+                .padding([8, 12])
+                .width(Fill)
+                .into()
+        } else {
+            mouse_area(
+                container(text("Load more").size(12).font(MONO).color(palette.primary.base.color))
+                    .padding([8, 12])
+                    .width(Fill),
+            )
+            .on_press(Message::LoadMoreCommits)
+            .into()
+        };
+        items.push(load_more);
+    }
+
+    scrollable(column(items).spacing(1).padding([4, 8]))
+        .height(Fill)
+        .into()
 }
 
 fn view_branch_picker(state: &State) -> Element<'_, Message> {
