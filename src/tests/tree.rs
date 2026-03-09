@@ -83,3 +83,40 @@ fn collapse_does_not_merge_dir_with_files() {
     assert_eq!(a.dirs.len(), 1);
     assert_eq!(a.files.len(), 1);
 }
+
+#[test]
+fn first_file_index_depth_first() {
+    let mut root = TreeDir::root();
+    root.insert_file(5, &make_file("z/deep.txt"));
+    root.insert_file(3, &make_file("a/b/first.txt"));
+    root.insert_file(7, &make_file("a/second.txt"));
+    root.sort_files_recursive();
+    root.collapse_single_child_dirs();
+
+    // Depth-first: dirs before files at each level
+    // "a" dir first (has subdir "b" with first.txt idx=3, then file second.txt idx=7)
+    // then "z" dir (deep.txt idx=5)
+    // first_file_index walks: a -> a/b -> first.txt (index 3)
+    assert_eq!(root.first_file_index(), Some(3));
+}
+
+#[test]
+fn first_file_index_empty() {
+    let root = TreeDir::root();
+    assert_eq!(root.first_file_index(), None);
+}
+
+#[test]
+fn first_file_index_for_subdir() {
+    let mut root = TreeDir::root();
+    root.insert_file(0, &make_file("src/a.rs"));
+    root.insert_file(1, &make_file("src/b.rs"));
+    root.insert_file(2, &make_file("tests/t.rs"));
+    root.sort_files_recursive();
+
+    let src = &root.dirs["src"];
+    assert_eq!(src.first_file_index(), Some(0));
+
+    let tests = &root.dirs["tests"];
+    assert_eq!(tests.first_file_index(), Some(2));
+}

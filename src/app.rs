@@ -613,6 +613,21 @@ impl State {
         all_dirs
     }
 
+    /// Find the first file index under a given directory path.
+    #[allow(dead_code)] // will be called in Task 5
+    pub(crate) fn first_file_index_for_dir(&self, dir_path: &str) -> Option<usize> {
+        let tree = self.build_tree();
+        let dir = tree.find_dir(dir_path)?;
+        dir.first_file_index()
+    }
+
+    /// Find the first file index in the entire tree.
+    #[allow(dead_code)] // will be called in Task 5
+    pub(crate) fn first_file_index_for_root(&self) -> Option<usize> {
+        let tree = self.build_tree();
+        tree.first_file_index()
+    }
+
     pub(crate) fn descendant_dir_paths(&self, path: &str) -> Vec<String> {
         self.all_dir_paths()
             .into_iter()

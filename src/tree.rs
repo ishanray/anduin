@@ -122,6 +122,32 @@ impl TreeDir {
         }
     }
 
+    /// Return the file index of the first file in this subtree (depth-first).
+    /// Dirs are visited before files at each level (matching sidebar render order).
+    #[allow(dead_code)] // used by State helpers; will be called in Task 5
+    pub(crate) fn first_file_index(&self) -> Option<usize> {
+        for dir in self.dirs.values() {
+            if let Some(index) = dir.first_file_index() {
+                return Some(index);
+            }
+        }
+        self.files.first().map(|f| f.index)
+    }
+
+    /// Find a subdirectory by its full path (works with collapsed dirs).
+    #[allow(dead_code)] // used by State helpers; will be called in Task 5
+    pub(crate) fn find_dir(&self, target_path: &str) -> Option<&Self> {
+        for dir in self.dirs.values() {
+            if dir.path == target_path {
+                return Some(dir);
+            }
+            if target_path.starts_with(&format!("{}/", dir.path)) {
+                return dir.find_dir(target_path);
+            }
+        }
+        None
+    }
+
     pub(crate) fn collect_dir_paths(&self, paths: &mut Vec<String>) {
         for dir in self.dirs.values() {
             paths.push(dir.path.clone());
