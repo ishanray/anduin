@@ -1,7 +1,7 @@
 use crate::MONO;
 use crate::app::{Message, State};
 use iced::theme::palette::Extended;
-use iced::widget::{center, column, container, mouse_area, row, text, Space};
+use iced::widget::{Space, center, column, container, mouse_area, row, text};
 use iced::{Border, Color, Element, Fill, Theme};
 
 /// Render a keyboard-style key cap badge.
@@ -19,13 +19,11 @@ fn kbd<'a>(label: &str, palette: &Extended) -> Element<'a, Message> {
     )
     .padding([3, 7])
     .style(move |_: &Theme| {
-        container::Style::default()
-            .background(bg)
-            .border(Border {
-                color: border_color,
-                width: 1.0,
-                radius: 4.0.into(),
-            })
+        container::Style::default().background(bg).border(Border {
+            color: border_color,
+            width: 1.0,
+            radius: 4.0.into(),
+        })
     })
     .into()
 }
@@ -59,26 +57,59 @@ pub(crate) fn view_shortcuts_help(state: &State) -> Element<'_, Message> {
     let card_border = palette.background.base.text.scale_alpha(0.15);
     let backdrop_color = Color::from_rgba(0.0, 0.0, 0.0, 0.5);
 
-    let cmd = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl" };
+    let cmd = if cfg!(target_os = "macos") {
+        "⌘"
+    } else {
+        "Ctrl"
+    };
 
     let shortcuts = column![
         text("Keyboard Shortcuts").size(16).color(fg),
         Space::new().height(8),
         // Navigation
-        shortcut_row(vec![kbd("↑", palette), kbd("↓", palette)], "Navigate files", palette),
-        shortcut_row(vec![kbd("←", palette), kbd("→", palette)], "Collapse / Expand", palette),
-        shortcut_row(vec![kbd("⌥", palette), kbd("←", palette), kbd("→", palette)], "Recursive collapse / expand", palette),
-        shortcut_row(vec![kbd("⇧", palette), kbd("↑", palette), kbd("↓", palette)], "Extend selection", palette),
+        shortcut_row(
+            vec![kbd("↑", palette), kbd("↓", palette)],
+            "Navigate files",
+            palette
+        ),
+        shortcut_row(
+            vec![kbd("←", palette), kbd("→", palette)],
+            "Collapse / Expand",
+            palette
+        ),
+        shortcut_row(
+            vec![kbd("⌥", palette), kbd("←", palette), kbd("→", palette)],
+            "Recursive collapse / expand",
+            palette
+        ),
+        shortcut_row(
+            vec![kbd("⇧", palette), kbd("↑", palette), kbd("↓", palette)],
+            "Extend selection",
+            palette
+        ),
         Space::new().height(4),
         // Actions
         shortcut_row(vec![kbd("Space", palette)], "Stage / Unstage", palette),
         shortcut_row(vec![kbd("A", palette)], "Toggle stage all", palette),
         shortcut_row(vec![kbd("U", palette)], "Unstage all", palette),
         shortcut_row(vec![kbd("C", palette)], "Commit", palette),
+        shortcut_row(
+            vec![kbd(cmd, palette), kbd("B", palette)],
+            "Switch branch",
+            palette
+        ),
         Space::new().height(4),
         // Global
-        shortcut_row(vec![kbd(cmd, palette), kbd("F", palette)], "Search in diff", palette),
-        shortcut_row(vec![kbd(cmd, palette), kbd("⇧", palette), kbd("F", palette)], "Project search", palette),
+        shortcut_row(
+            vec![kbd(cmd, palette), kbd("F", palette)],
+            "Search in diff",
+            palette
+        ),
+        shortcut_row(
+            vec![kbd(cmd, palette), kbd("⇧", palette), kbd("F", palette)],
+            "Project search",
+            palette
+        ),
         shortcut_row(vec![kbd("Esc", palette)], "Close / Deselect", palette),
         shortcut_row(vec![kbd("?", palette)], "Show this help", palette),
     ]
