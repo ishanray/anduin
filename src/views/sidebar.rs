@@ -3,7 +3,8 @@ use crate::git::diff::FileStatus;
 use crate::tree::SidebarRow;
 use crate::{MONO, PANEL_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT, TREE_INDENT, lucide};
 use iced::theme::palette::Extended;
-use iced::widget::{Space, button, column, container, mouse_area, row, rule, scrollable, text};
+use iced::widget::text::Wrapping;
+use iced::widget::{Space, button, column, container, mouse_area, row, rule, scrollable, text, text_input};
 use iced::{Element, Fill, Theme};
 
 pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
@@ -18,9 +19,27 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
         lucide::moon().size(16).color(fg)
     };
 
+    let branch_display = state
+        .current_branch
+        .as_deref()
+        .unwrap_or("Anduin");
+
+    let branch_label = button(
+        row![
+            lucide::git_branch().size(14).color(fg),
+            text(branch_display).size(14).color(fg),
+            lucide::chevron_down().size(12).color(muted_fg),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center),
+    )
+    .on_press(Message::OpenBranchPicker)
+    .style(button::text)
+    .padding([4, 8]);
+
     let header = container(
         row![
-            text("Anduin").size(16).color(fg),
+            branch_label,
             Space::new().width(Fill),
             button(lucide::plus().size(16).color(fg))
                 .on_press(Message::OpenRepo)
@@ -46,8 +65,8 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
             .into()
     } else {
         let items: Vec<Element<'_, Message>> = state
-            .cached_rows
-            .iter()
+            .visible_cached_rows()
+            .into_iter()
             .map(|row_data| {
                 let target = state.sidebar_target_for_row(row_data);
                 let is_focused = state.focused_sidebar_target.as_ref() == Some(&target);
@@ -64,11 +83,15 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                 } else {
                     palette.background.weakest.text
                 };
-                let stage_indicator: Element<'_, Message> = if state.sidebar_target_is_fully_staged(&target) {
-                    lucide::circle().size(10).color(palette.success.base.color).into()
-                } else {
-                    text(" ").size(10).into()
-                };
+                let stage_indicator: Element<'_, Message> =
+                    if state.sidebar_target_is_fully_staged(&target) {
+                        lucide::circle()
+                            .size(10)
+                            .color(palette.success.base.color)
+                            .into()
+                    } else {
+                        text(" ").size(10).into()
+                    };
 
                 match row_data {
                     SidebarRow::Root { name, expanded } => {
@@ -103,7 +126,9 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                             )
                             .width(Fill)
                             .padding([8, 12])
-                            .style(move |_: &Theme| container::Style::default().background(item_bg)),
+                            .style(move |_: &Theme| {
+                                container::Style::default().background(item_bg)
+                            }),
                         )
                         .on_press(Message::ToggleRoot(recursive))
                         .into()
@@ -147,7 +172,9 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                             )
                             .width(Fill)
                             .padding([8, 12])
-                            .style(move |_: &Theme| container::Style::default().background(item_bg)),
+                            .style(move |_: &Theme| {
+                                container::Style::default().background(item_bg)
+                            }),
                         )
                         .on_press(Message::ToggleDir(path.clone(), recursive))
                         .into()
@@ -182,6 +209,39 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                             FileStatus::Other => lucide::circle().size(14).color(muted_fg).into(),
                         };
 
+                        let match_badge: Element<'_, Message> = state
+                            .project_search
+                            .as_ref()
+                            .filter(|s| s.is_open)
+                            .and_then(|search| {
+                                let file = state.files.get(index)?;
+                                let result_idx =
+                                    search.result_index_by_path.get(&file.path)?;
+                                search.results.get(*result_idx)
+                            })
+                            .map(|result| {
+                                let badge_color = palette.warning.base.color;
+                                container(
+                                    text(&result.total_matches_display)
+                                        .size(10)
+                                        .font(MONO)
+                                        .color(badge_color)
+                                        .wrapping(Wrapping::None),
+                                )
+                                .padding([1, 6])
+                                .style(move |_: &Theme| {
+                                    container::Style::default()
+                                        .background(badge_color.scale_alpha(0.12))
+                                        .border(iced::Border {
+                                            color: badge_color.scale_alpha(0.25),
+                                            width: 1.0,
+                                            radius: 8.0.into(),
+                                        })
+                                })
+                                .into()
+                            })
+                            .unwrap_or_else(|| Space::new().width(0).into());
+
                         mouse_area(
                             container(
                                 row![
@@ -189,14 +249,25 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                                     container(lucide::file().size(14).color(muted_fg)).width(16),
                                     container(status_icon).width(16),
                                     container(stage_indicator).width(12),
-                                    text(name.as_str()).size(13).font(MONO).color(item_fg),
+                                    container(
+                                        text(name.as_str())
+                                            .size(13)
+                                            .font(MONO)
+                                            .color(item_fg)
+                                            .wrapping(Wrapping::None),
+                                    )
+                                    .width(Fill)
+                                    .clip(true),
+                                    match_badge,
                                 ]
                                 .spacing(8)
                                 .align_y(iced::Alignment::Center),
                             )
                             .width(Fill)
                             .padding([8, 12])
-                            .style(move |_: &Theme| container::Style::default().background(item_bg)),
+                            .style(move |_: &Theme| {
+                                container::Style::default().background(item_bg)
+                            }),
                         )
                         .on_press(Message::SelectFile(index))
                         .into()
@@ -230,12 +301,8 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
 
     if let Some(status) = state.status_message.as_ref() {
         let color = status_color(palette, status.tone);
-        footer_content = footer_content.push(
-            text(status.text.as_str())
-                .size(12)
-                .font(MONO)
-                .color(color),
-        );
+        footer_content =
+            footer_content.push(text(status.text.as_str()).size(12).font(MONO).color(color));
     }
 
     let footer = container(footer_content).padding([10, 14]);
@@ -243,17 +310,134 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
     let sidebar_bg = palette.background.base.color;
     let sidebar_border = palette.background.strong.color;
 
-    container(column![header, rule::horizontal(1), file_list, rule::horizontal(1), footer].height(Fill))
-        .style(move |_theme: &Theme| {
-            container::Style::default()
-                .background(sidebar_bg)
-                .border(iced::Border {
-                    color: sidebar_border,
-                    width: 0.0,
-                    radius: 0.into(),
-                })
+    let mut sidebar_column = column![header, rule::horizontal(1)].height(Fill);
+
+    if state.is_branch_picker_open() {
+        sidebar_column = sidebar_column.push(view_branch_picker(state));
+        sidebar_column = sidebar_column.push(rule::horizontal(1));
+    }
+
+    sidebar_column = sidebar_column.push(file_list);
+    sidebar_column = sidebar_column.push(rule::horizontal(1));
+    sidebar_column = sidebar_column.push(footer);
+
+    container(sidebar_column)
+    .style(move |_theme: &Theme| {
+        container::Style::default()
+            .background(sidebar_bg)
+            .border(iced::Border {
+                color: sidebar_border,
+                width: 0.0,
+                radius: 0.into(),
+            })
+    })
+    .height(Fill)
+    .into()
+}
+
+fn view_branch_picker<'a>(state: &'a State) -> Element<'a, Message> {
+    let theme = state.app_theme();
+    let palette = theme.extended_palette();
+    let fg = palette.background.base.text;
+    let bg = palette.background.base.color;
+    let border_color = palette.background.base.text.scale_alpha(0.15);
+    let hover_bg = palette.primary.weak.color;
+    let hover_fg = palette.primary.weak.text;
+    let success_color = palette.success.base.color;
+    let danger_color = palette.danger.base.color;
+    let empty_color = palette.background.strong.text.scale_alpha(0.6);
+    let danger_bg = palette.danger.base.color.scale_alpha(0.1);
+
+    let picker = state.branch_picker.as_ref().expect("picker must be Some");
+
+    let input = text_input("Filter branches…", &picker.filter)
+        .on_input(Message::BranchPickerFilterChanged)
+        .id(picker.input_id.clone())
+        .size(13)
+        .padding([8, 12]);
+
+    let filtered = picker.filtered_branches();
+
+    let branch_items: Vec<Element<'a, Message>> = filtered
+        .iter()
+        .enumerate()
+        .map(|(i, branch)| {
+            let is_current = *branch == picker.current;
+            let is_selected = i == picker.selected_index;
+            let item_bg = if is_selected { hover_bg } else { bg };
+            let item_fg = if is_selected { hover_fg } else { fg };
+            let branch_owned = branch.to_string();
+
+            let mut row_content = row![].spacing(8).align_y(iced::Alignment::Center);
+
+            if is_current {
+                row_content = row_content.push(
+                    lucide::check().size(12).color(success_color),
+                );
+            } else {
+                row_content = row_content.push(Space::new().width(12));
+            }
+
+            row_content = row_content.push(
+                text(branch_owned.clone()).size(13).font(MONO).color(item_fg),
+            );
+
+            mouse_area(
+                container(row_content)
+                    .width(Fill)
+                    .padding([6, 12])
+                    .style(move |_: &Theme| {
+                        container::Style::default().background(item_bg)
+                    }),
+            )
+            .on_press(Message::SwitchBranch(branch_owned))
+            .into()
         })
-        .height(Fill)
+        .collect();
+
+    let branch_list: Element<'a, Message> = if branch_items.is_empty() {
+        container(
+            text("No matching branches")
+                .size(12)
+                .color(empty_color),
+        )
+        .padding([8, 12])
+        .into()
+    } else {
+        scrollable(column(branch_items).spacing(2))
+            .height(iced::Length::Shrink)
+            .into()
+    };
+
+    let mut content = column![input, rule::horizontal(1), branch_list].spacing(0);
+
+    if let Some(error) = picker.error.as_ref() {
+        content = content.push(
+            container(
+                text(error.as_str())
+                    .size(12)
+                    .font(MONO)
+                    .color(danger_color),
+            )
+            .padding([8, 12])
+            .width(Fill)
+            .style(move |_: &Theme| {
+                container::Style::default()
+                    .background(danger_bg)
+            }),
+        );
+    }
+
+    container(content)
+        .width(Fill)
+        .max_height(300.0)
+        .style(move |_: &Theme| {
+            container::Style::default().background(bg).border(iced::Border {
+                color: border_color,
+                width: 1.0,
+                radius: 8.0.into(),
+            })
+        })
         .into()
 }
 
