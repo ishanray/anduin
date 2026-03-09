@@ -215,6 +215,22 @@ pub(crate) enum Message {
     CloseProjectPicker,
     ProjectPickerFilterChanged(String),
     SwitchProject(String),
+    #[allow(dead_code)]
+    SwitchSidebarTab(SidebarTab),
+    #[allow(dead_code)]
+    CommitsLoaded(Result<Vec<Commit>, String>),
+    #[allow(dead_code)]
+    SelectCommit(usize),
+    #[allow(dead_code)]
+    CommitFilesLoaded(Result<Vec<ChangedFile>, String>),
+    #[allow(dead_code)]
+    SelectHistoryFile(usize),
+    #[allow(dead_code)]
+    HistoryDiffLoaded(u64, Result<FileDiff, String>),
+    #[allow(dead_code)]
+    LoadMoreCommits,
+    #[allow(dead_code)]
+    CopyCommitHash(String),
 }
 
 impl ThemeMode {
