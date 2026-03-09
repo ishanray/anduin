@@ -335,7 +335,7 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
     .into()
 }
 
-fn view_branch_picker<'a>(state: &'a State) -> Element<'a, Message> {
+fn view_branch_picker(state: &State) -> Element<'_, Message> {
     let theme = state.app_theme();
     let palette = theme.extended_palette();
     let fg = palette.background.base.text;
@@ -358,7 +358,7 @@ fn view_branch_picker<'a>(state: &'a State) -> Element<'a, Message> {
 
     let filtered = picker.filtered_branches();
 
-    let branch_items: Vec<Element<'a, Message>> = filtered
+    let branch_items: Vec<Element<'_, Message>> = filtered
         .iter()
         .enumerate()
         .map(|(i, branch)| {
@@ -395,7 +395,7 @@ fn view_branch_picker<'a>(state: &'a State) -> Element<'a, Message> {
         })
         .collect();
 
-    let branch_list: Element<'a, Message> = if branch_items.is_empty() {
+    let branch_list: Element<'_, Message> = if branch_items.is_empty() {
         container(
             text("No matching branches")
                 .size(12)
