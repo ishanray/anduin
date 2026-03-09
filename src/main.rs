@@ -17,6 +17,9 @@ mod update;
 mod views;
 mod watch;
 
+#[cfg(test)]
+mod tests;
+
 use actions::load_changed_files;
 use app::{ActivePane, Message, State, ThemeMode};
 use iced::event as iced_event;
@@ -31,7 +34,6 @@ use std::path::PathBuf;
 use std::time::Duration;
 use update::update;
 use views::diff::view_diff;
-use views::project_search::view_project_search;
 use views::shortcuts_help::view_shortcuts_help;
 use views::sidebar::view_sidebar;
 
@@ -143,6 +145,8 @@ fn boot() -> (State, Task<Message>) {
         active_pane: ActivePane::Sidebar,
         cached_theme,
         show_shortcuts_help: false,
+        current_branch: None,
+        branch_picker: None,
     };
 
     let task = Task::perform(
@@ -190,10 +194,6 @@ fn view(state: &State) -> Element<'_, Message> {
         )
         .padding(20)
         .into();
-    }
-
-    if let Some(search) = state.project_search.as_ref() {
-        return view_project_search(state, search);
     }
 
     let sidebar = view_sidebar(state);

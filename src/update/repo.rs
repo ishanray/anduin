@@ -3,7 +3,9 @@ use crate::actions::{
     commit_staged_changes, load_changed_files, load_selected_diff, maybe_run_project_search,
     scroll_sidebar_to_selected, stage_all_files, stage_files, unstage_all_files, unstage_files,
 };
-use crate::app::{ActivePane, CommitComposer, Message, ProjectSearch, SidebarTarget, State, StatusTone};
+use crate::app::{
+    ActivePane, CommitComposer, Message, ProjectSearch, SidebarTarget, State, StatusTone,
+};
 use crate::git;
 use crate::search::SEARCH_DEBOUNCE_MS;
 use crate::shortcuts::{
@@ -14,7 +16,8 @@ use crate::tree::SidebarRow;
 use crate::watch;
 use iced::Task;
 use iced::keyboard;
-use iced::widget::operation::{focus, move_cursor_to_end};
+use iced::widget::Id;
+use iced::widget::operation::{focus, move_cursor_to_end, select_all};
 use iced_code_editor::{Message as EditorMessage, theme as editor_theme};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -113,6 +116,7 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
     state.status_message = None;
     state.commit_composer = None;
     state.project_search = None;
+    state.branch_picker = None;
     state.pending_diff_jump = None;
     state.sidebar_scroll_offset = 0.0;
     state.sidebar_viewport_height = 0.0;
@@ -123,7 +127,10 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
 
     state.refresh_in_flight = true;
     state.refresh_queued = false;
-    Task::perform(async move { load_changed_files(repo_path) }, Message::FilesLoaded)
+    Task::perform(
+        async move { load_changed_files(repo_path) },
+        Message::FilesLoaded,
+    )
 }
 
 pub(crate) fn handle_toggle_theme(state: &mut State) -> Task<Message> {
@@ -169,7 +176,10 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
             return update(state, Message::ToggleShortcutsHelp);
         }
         if state.show_shortcuts_help {
-            if matches!(key.as_ref(), keyboard::Key::Named(keyboard::key::Named::Escape)) {
+            if matches!(
+                key.as_ref(),
+                keyboard::Key::Named(keyboard::key::Named::Escape)
+            ) {
                 state.show_shortcuts_help = false;
             }
             return Task::none();
@@ -179,7 +189,7 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
         return Task::none();
     }
 
-    if state.project_search.is_some() {
+    if state.is_search_open() {
         return handle_project_search_keyboard_event(state, &event);
     }
 
@@ -198,7 +208,12 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
                 .map(Message::DiffEditor)
         }
         Some(ShortcutAction::CloseActive) => {
-            if state.active_pane == ActivePane::Diff {
+            if state.active_pane == ActivePane::Diff && state.diff_editor.is_search_open() {
+                state
+                    .diff_editor
+                    .update(&EditorMessage::CloseSearch)
+                    .map(Message::DiffEditor)
+            } else if state.active_pane == ActivePane::Diff {
                 focus_sidebar(state)
             } else if state.has_explicit_selection() {
                 state.clear_explicit_selection();
@@ -219,19 +234,39 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
 
 pub(crate) fn handle_open_project_search(state: &mut State) -> Task<Message> {
     state.active_pane = ActivePane::Sidebar;
+
+    // Carry over the diff editor's search query if project search is empty
+    let editor_query = state.diff_editor.search_query().to_owned();
     state.diff_editor.lose_focus();
+
     let mut search = state
         .project_search
         .take()
         .unwrap_or_else(ProjectSearch::new);
-    search.pending_run_at = if search.query.is_empty() {
-        None
+    search.is_open = true;
+    search.input_focused = true;
+
+    // Only seed from editor and trigger a new search if the search had no query
+    let seeded = if search.query.is_empty() && !editor_query.is_empty() {
+        search.query = editor_query;
+        search.update_query_lower();
+        true
     } else {
-        Some(Instant::now() + Duration::from_millis(SEARCH_DEBOUNCE_MS))
+        false
     };
+
+    // Only re-run search if we just seeded a new query; reopening with
+    // existing results should show them instantly without re-searching.
+    if seeded {
+        search.rebuild_cached_summaries();
+        search.pending_run_at = Some(Instant::now() + Duration::from_millis(SEARCH_DEBOUNCE_MS));
+    }
+
     let input_id = search.input_id.clone();
     state.project_search = Some(search);
-    Task::batch([focus(input_id.clone()), move_cursor_to_end(input_id)])
+
+    // Select all text so the user can immediately type to replace
+    Task::batch([focus(input_id.clone()), select_all(input_id)])
 }
 
 pub(crate) fn handle_open_commit_composer(state: &mut State) -> Task<Message> {
@@ -286,7 +321,10 @@ pub(crate) fn handle_submit_commit(state: &mut State) -> Task<Message> {
     let repo_path = state.repo_path.clone();
     let summary = composer.summary.trim().to_owned();
     Task::perform(
-        async move { commit_staged_changes(repo_path, summary.clone()).map(|sha| format!("Committed {sha} — {summary}")) },
+        async move {
+            commit_staged_changes(repo_path, summary.clone())
+                .map(|sha| format!("Committed {sha} — {summary}"))
+        },
         Message::CommitFinished,
     )
 }
@@ -332,7 +370,46 @@ fn handle_project_search_keyboard_event(
     event: &keyboard::Event,
 ) -> Task<Message> {
     match shortcut_action_for_event(current_shortcut_platform(), event) {
-        Some(ShortcutAction::CloseActive) => update(state, Message::CloseProjectSearch),
+        Some(ShortcutAction::CloseActive) => {
+            let input_focused = state
+                .project_search
+                .as_ref()
+                .is_some_and(|s| s.input_focused);
+            if input_focused {
+                // First Escape: unfocus input, enable sidebar keyboard nav
+                if let Some(search) = state.project_search.as_mut() {
+                    search.input_focused = false;
+                }
+                state.active_pane = ActivePane::Sidebar;
+                // Unfocus the text input by focusing a dummy widget
+                focus(Id::new("__unfocus_dummy__"))
+            } else {
+                // Second Escape: close search entirely
+                update(state, Message::CloseProjectSearch)
+            }
+        }
+        Some(ShortcutAction::OpenProject) => {
+            // Cmd+Shift+F while search is open: refocus the input
+            if let Some(search) = state.project_search.as_mut() {
+                search.input_focused = true;
+                let input_id = search.input_id.clone();
+                Task::batch([focus(input_id.clone()), select_all(input_id)])
+            } else {
+                Task::none()
+            }
+        }
+        None => {
+            // When input is not focused, allow sidebar keyboard navigation
+            let input_focused = state
+                .project_search
+                .as_ref()
+                .is_some_and(|s| s.input_focused);
+            if !input_focused && state.active_pane == ActivePane::Sidebar {
+                handle_file_list_keyboard_event(state, event)
+            } else {
+                Task::none()
+            }
+        }
         _ => Task::none(),
     }
 }
@@ -347,7 +424,10 @@ fn handle_commit_keyboard_event(state: &mut State, event: &keyboard::Event) -> T
             };
 
             if is_primary_modifier_pressed(current_shortcut_platform(), *modifiers)
-                && matches!(key.as_ref(), keyboard::Key::Named(keyboard::key::Named::Enter))
+                && matches!(
+                    key.as_ref(),
+                    keyboard::Key::Named(keyboard::key::Named::Enter)
+                )
             {
                 update(state, Message::SubmitCommit)
             } else {
@@ -373,9 +453,7 @@ fn handle_file_list_keyboard_event(state: &mut State, event: &keyboard::Event) -
         {
             navigate_visible_rows(state, 1, modifiers.shift())
         }
-        keyboard::Key::Named(keyboard::key::Named::ArrowLeft)
-            if modifiers_alt_only(*modifiers) =>
-        {
+        keyboard::Key::Named(keyboard::key::Named::ArrowLeft) if modifiers_alt_only(*modifiers) => {
             collapse_focused_row(state, true)
         }
         keyboard::Key::Named(keyboard::key::Named::ArrowRight)
@@ -393,16 +471,24 @@ fn handle_file_list_keyboard_event(state: &mut State, event: &keyboard::Event) -
         {
             expand_focused_row(state, false)
         }
-        keyboard::Key::Named(keyboard::key::Named::Space) if modifiers_without_shift(*modifiers) => {
+        keyboard::Key::Named(keyboard::key::Named::Space)
+            if modifiers_without_shift(*modifiers) =>
+        {
             toggle_stage_for_targeted_files(state)
         }
-        keyboard::Key::Character(c) if no_shortcut_modifiers(*modifiers) && c.eq_ignore_ascii_case("a") => {
+        keyboard::Key::Character(c)
+            if no_shortcut_modifiers(*modifiers) && c.eq_ignore_ascii_case("a") =>
+        {
             toggle_stage_all(state)
         }
-        keyboard::Key::Character(c) if no_shortcut_modifiers(*modifiers) && c.eq_ignore_ascii_case("u") => {
+        keyboard::Key::Character(c)
+            if no_shortcut_modifiers(*modifiers) && c.eq_ignore_ascii_case("u") =>
+        {
             unstage_all(state)
         }
-        keyboard::Key::Character(c) if no_shortcut_modifiers(*modifiers) && c.eq_ignore_ascii_case("c") => {
+        keyboard::Key::Character(c)
+            if no_shortcut_modifiers(*modifiers) && c.eq_ignore_ascii_case("c") =>
+        {
             update(state, Message::OpenCommitComposer)
         }
         keyboard::Key::Named(keyboard::key::Named::Escape) => {
@@ -426,7 +512,9 @@ fn navigate_visible_rows(state: &mut State, delta: isize, extend: bool) -> Task<
     }
 
     let current_pos = state.focused_sidebar_row_index().unwrap_or(0);
-    let next_pos = current_pos.saturating_add_signed(delta).min(visible_targets.len() - 1);
+    let next_pos = current_pos
+        .saturating_add_signed(delta)
+        .min(visible_targets.len() - 1);
     if next_pos == current_pos {
         return Task::none();
     }
@@ -440,7 +528,9 @@ fn navigate_visible_rows(state: &mut State, delta: isize, extend: bool) -> Task<
             .or_else(|| state.focused_sidebar_target.clone())
             .unwrap_or_else(|| visible_targets[current_pos].clone());
 
-        let Some(anchor_pos) = visible_targets.iter().position(|target| *target == anchor_target)
+        let Some(anchor_pos) = visible_targets
+            .iter()
+            .position(|target| *target == anchor_target)
         else {
             return Task::none();
         };
@@ -506,7 +596,9 @@ fn expand_focused_row(state: &mut State, recursive: bool) -> Task<Message> {
         SidebarTarget::Dir(path) => {
             if recursive {
                 state.expanded_dirs.insert(path.clone());
-                state.expanded_dirs.extend(state.descendant_dir_paths(&path));
+                state
+                    .expanded_dirs
+                    .extend(state.descendant_dir_paths(&path));
                 state.tree_dirty = true;
                 state.ensure_rows_cached();
                 state.retain_sidebar_selection();
@@ -575,21 +667,16 @@ fn toggle_stage_for_targeted_files(state: &mut State) -> Task<Message> {
     if all_staged {
         Task::perform(
             async move {
-                unstage_files(repo_path, paths).map(|()| {
-                    format!(
-                        "Unstaged {count} file{}",
-                        if count == 1 { "" } else { "s" }
-                    )
-                })
+                unstage_files(repo_path, paths)
+                    .map(|()| format!("Unstaged {count} file{}", if count == 1 { "" } else { "s" }))
             },
             Message::GitOperationFinished,
         )
     } else {
         Task::perform(
             async move {
-                stage_files(repo_path, paths).map(|()| {
-                    format!("Staged {count} file{}", if count == 1 { "" } else { "s" })
-                })
+                stage_files(repo_path, paths)
+                    .map(|()| format!("Staged {count} file{}", if count == 1 { "" } else { "s" }))
             },
             Message::GitOperationFinished,
         )

@@ -40,6 +40,16 @@ pub(crate) struct CommitComposer {
     pub(crate) error: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct BranchPicker {
+    pub(crate) branches: Vec<String>,
+    pub(crate) current: String,
+    pub(crate) filter: String,
+    pub(crate) selected_index: usize,
+    pub(crate) error: Option<String>,
+    pub(crate) input_id: Id,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum SidebarTarget {
     Root,
@@ -86,6 +96,8 @@ pub(crate) struct State {
     pub(crate) active_pane: ActivePane,
     pub(crate) cached_theme: Theme,
     pub(crate) show_shortcuts_help: bool,
+    pub(crate) current_branch: Option<String>,
+    pub(crate) branch_picker: Option<BranchPicker>,
 }
 
 #[derive(Debug, Clone)]
@@ -111,8 +123,9 @@ pub(crate) struct ProjectSearch {
     pub(crate) searching: bool,
     pub(crate) request_id: u64,
     pub(crate) pending_run_at: Option<Instant>,
+    pub(crate) is_open: bool,
+    pub(crate) input_focused: bool,
     pub(crate) input_id: Id,
-    pub(crate) results_scroll_id: Id,
     pub(crate) cached_summary: String,
     pub(crate) cached_file_summary: String,
     pub(crate) cached_result_summary: String,
@@ -150,9 +163,16 @@ pub(crate) enum Message {
     ProjectSearchToggleCase,
     ProjectSearchTick,
     ProjectSearchResults(u64, Result<ProjectSearchResponse, String>),
-    ProjectSearchScrollToFile(String),
     ProjectSearchJumpTo(String, usize),
     ToggleShortcutsHelp,
+    OpenBranchPicker,
+    CloseBranchPicker,
+    BranchesFetched(Result<(Vec<String>, String), String>),
+    BranchPickerFilterChanged(String),
+    BranchPickerKeyEvent(keyboard::Event),
+    SwitchBranch(String),
+    BranchSwitched(Result<(), String>),
+    CurrentBranchFetched(Result<String, String>),
 }
 
 impl ThemeMode {
@@ -205,6 +225,30 @@ impl CommitComposer {
     }
 }
 
+impl BranchPicker {
+    pub(crate) fn new(branches: Vec<String>, current: String) -> Self {
+        Self {
+            branches,
+            current,
+            filter: String::new(),
+            selected_index: 0,
+            error: None,
+            input_id: Id::unique(),
+        }
+    }
+
+    pub(crate) fn filtered_branches(&self) -> Vec<&str> {
+        let filter_lower = self.filter.to_lowercase();
+        self.branches
+            .iter()
+            .filter(|b| {
+                self.filter.is_empty() || b.to_lowercase().contains(&filter_lower)
+            })
+            .map(String::as_str)
+            .collect()
+    }
+}
+
 impl ProjectSearch {
     pub(crate) fn new() -> Self {
         Self {
@@ -217,8 +261,9 @@ impl ProjectSearch {
             searching: false,
             request_id: 0,
             pending_run_at: None,
+            is_open: true,
+            input_focused: true,
             input_id: Id::unique(),
-            results_scroll_id: Id::unique(),
             cached_summary: String::new(),
             cached_file_summary: "0 files".to_owned(),
             cached_result_summary: String::new(),
@@ -258,8 +303,7 @@ impl ProjectSearch {
 
     pub(crate) fn rebuild_cached_summaries(&mut self) {
         if self.query.is_empty() {
-            self.cached_summary =
-                "Search current changed diffs with ±5 lines of context".to_owned();
+            self.cached_summary = "Search all diffs".to_owned();
             self.cached_file_summary = "0 files".to_owned();
             self.cached_result_summary = String::new();
             return;
@@ -301,6 +345,16 @@ impl ProjectSearch {
 }
 
 impl State {
+    pub(crate) fn is_search_open(&self) -> bool {
+        self.project_search
+            .as_ref()
+            .is_some_and(|s| s.is_open)
+    }
+
+    pub(crate) fn is_branch_picker_open(&self) -> bool {
+        self.branch_picker.is_some()
+    }
+
     pub(crate) fn app_theme(&self) -> Theme {
         self.cached_theme.clone()
     }
@@ -353,8 +407,45 @@ impl State {
         }
     }
 
+    /// Returns the cached rows visible in the sidebar, filtering by search
+    /// results when project search is active.
+    pub(crate) fn visible_cached_rows(&self) -> Vec<&SidebarRow> {
+        let search_filter = self
+            .project_search
+            .as_ref()
+            .filter(|s| s.is_open && !s.query.is_empty() && !s.matching_paths.is_empty());
+
+        if let Some(search) = search_filter {
+            // Compute matching dirs (ancestors of matching file paths)
+            let mut matching_dirs = HashSet::<String>::new();
+            for path in &search.matching_paths {
+                let mut current = path.as_str();
+                while let Some(pos) = current.rfind('/') {
+                    current = &current[..pos];
+                    if !matching_dirs.insert(current.to_owned()) {
+                        break;
+                    }
+                }
+            }
+
+            self.cached_rows
+                .iter()
+                .filter(|row| match row {
+                    SidebarRow::Root { .. } => true,
+                    SidebarRow::Dir { path, .. } => matching_dirs.contains(path),
+                    SidebarRow::File { index, .. } => self
+                        .files
+                        .get(*index)
+                        .is_some_and(|f| search.matching_paths.contains(&f.path)),
+                })
+                .collect()
+        } else {
+            self.cached_rows.iter().collect()
+        }
+    }
+
     pub(crate) fn visible_sidebar_targets(&self) -> Vec<SidebarTarget> {
-        self.cached_rows
+        self.visible_cached_rows()
             .iter()
             .map(|row| self.sidebar_target_for_row(row))
             .collect()
@@ -362,13 +453,14 @@ impl State {
 
     pub(crate) fn focused_sidebar_row_index(&self) -> Option<usize> {
         let target = self.focused_sidebar_target.as_ref()?;
-        self.cached_rows
+        self.visible_cached_rows()
             .iter()
             .position(|row| self.sidebar_target_for_row(row) == *target)
     }
 
     pub(crate) fn retain_sidebar_selection(&mut self) {
-        let visible_targets: HashSet<SidebarTarget> = self.visible_sidebar_targets().into_iter().collect();
+        let visible_targets: HashSet<SidebarTarget> =
+            self.visible_sidebar_targets().into_iter().collect();
         self.selected_sidebar_targets
             .retain(|target| visible_targets.contains(target));
 
@@ -578,8 +670,7 @@ impl State {
             self.expanded_dirs.insert(path.to_owned());
 
             if recursive {
-                self.expanded_dirs
-                    .extend(self.descendant_dir_paths(path));
+                self.expanded_dirs.extend(self.descendant_dir_paths(path));
             }
         }
         self.tree_dirty = true;
@@ -593,7 +684,10 @@ impl State {
             self.refresh_in_flight = true;
             self.refresh_queued = false;
             let repo = self.repo_path.clone();
-            Task::perform(async move { load_changed_files(repo) }, Message::FilesLoaded)
+            Task::perform(
+                async move { load_changed_files(repo) },
+                Message::FilesLoaded,
+            )
         }
     }
 

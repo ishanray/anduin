@@ -41,10 +41,14 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ToggleTheme => repo::handle_toggle_theme(state),
         Message::WatchEvent(event) => repo::handle_watch_event(state, event),
         Message::KeyboardEvent(event) => repo::handle_keyboard_event(state, event),
-        Message::SidebarScrolled(offset, height) => repo::handle_sidebar_scrolled(state, offset, height),
+        Message::SidebarScrolled(offset, height) => {
+            repo::handle_sidebar_scrolled(state, offset, height)
+        }
         Message::OpenProjectSearch => repo::handle_open_project_search(state),
         Message::CloseProjectSearch => {
-            state.project_search = None;
+            if let Some(search) = state.project_search.as_mut() {
+                search.is_open = false;
+            }
             state.pending_diff_jump = None;
             state.active_pane = ActivePane::Sidebar;
             state.diff_editor.lose_focus();
@@ -52,7 +56,9 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         }
         Message::OpenCommitComposer => repo::handle_open_commit_composer(state),
         Message::CloseCommitComposer => repo::handle_close_commit_composer(state),
-        Message::CommitSummaryChanged(summary) => repo::handle_commit_summary_changed(state, summary),
+        Message::CommitSummaryChanged(summary) => {
+            repo::handle_commit_summary_changed(state, summary)
+        }
         Message::SubmitCommit => repo::handle_submit_commit(state),
         Message::GitOperationFinished(result) => repo::handle_git_operation_finished(state, result),
         Message::CommitFinished(result) => repo::handle_commit_finished(state, result),
@@ -64,14 +70,22 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ProjectSearchResults(request_id, result) => {
             search::handle_project_search_results(state, request_id, result)
         }
-        Message::ProjectSearchScrollToFile(file_path) => {
-            search::handle_project_search_scroll_to_file(state, &file_path)
-        }
         Message::ProjectSearchJumpTo(file_path, line_number) => {
             search::handle_project_search_jump_to(state, file_path, line_number)
         }
         Message::ToggleShortcutsHelp => {
             state.show_shortcuts_help = !state.show_shortcuts_help;
+            Task::none()
+        }
+        Message::OpenBranchPicker
+        | Message::CloseBranchPicker
+        | Message::BranchesFetched(_)
+        | Message::BranchPickerFilterChanged(_)
+        | Message::BranchPickerKeyEvent(_)
+        | Message::SwitchBranch(_)
+        | Message::BranchSwitched(_)
+        | Message::CurrentBranchFetched(_) => {
+            // Branch picker handlers will be implemented in a subsequent task.
             Task::none()
         }
     }
