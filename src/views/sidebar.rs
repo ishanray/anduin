@@ -348,7 +348,9 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
     let empty_color = palette.background.strong.text.scale_alpha(0.6);
     let danger_bg = palette.danger.base.color.scale_alpha(0.1);
 
-    let picker = state.branch_picker.as_ref().expect("picker must be Some");
+    let Some(picker) = state.branch_picker.as_ref() else {
+        return text("").into();
+    };
 
     let input = text_input("Filter branches…", &picker.filter)
         .on_input(Message::BranchPickerFilterChanged)

@@ -477,7 +477,7 @@ pub(crate) fn handle_switch_branch(state: &mut State, branch: String) -> Task<Me
     let repo_path = state.repo_path.clone();
     let branch_clone = branch.clone();
     Task::perform(
-        async move { switch_branch(repo_path, branch_clone).map(|()| ()) },
+        async move { switch_branch(repo_path, branch_clone) },
         Message::BranchSwitched,
     )
 }
