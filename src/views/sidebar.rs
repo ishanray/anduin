@@ -125,7 +125,7 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                                 .align_y(iced::Alignment::Center),
                             )
                             .width(Fill)
-                            .padding([8, 12])
+                            .padding([3, 8])
                             .style(move |_: &Theme| {
                                 container::Style::default().background(item_bg)
                             }),
@@ -171,7 +171,7 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                                 .align_y(iced::Alignment::Center),
                             )
                             .width(Fill)
-                            .padding([8, 12])
+                            .padding([3, 8])
                             .style(move |_: &Theme| {
                                 container::Style::default().background(item_bg)
                             }),
@@ -264,7 +264,7 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                                 .align_y(iced::Alignment::Center),
                             )
                             .width(Fill)
-                            .padding([8, 12])
+                            .padding([3, 8])
                             .style(move |_: &Theme| {
                                 container::Style::default().background(item_bg)
                             }),
@@ -276,7 +276,7 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
             })
             .collect();
 
-        scrollable(column(items).spacing(2).padding([8, 8]))
+        scrollable(column(items).spacing(1).padding([4, 8]))
             .id(state.sidebar_scroll_id.clone())
             .on_scroll(|viewport| {
                 Message::SidebarScrolled(viewport.absolute_offset().y, viewport.bounds().height)

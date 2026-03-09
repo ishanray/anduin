@@ -38,9 +38,9 @@ use views::shortcuts_help::view_shortcuts_help;
 use views::sidebar::view_sidebar;
 
 const MONO: Font = Font::MONOSPACE;
-const TREE_INDENT: f32 = 18.0;
+const TREE_INDENT: f32 = 14.0;
 /// Height of a single sidebar row (content + vertical padding + spacing).
-const SIDEBAR_ROW_HEIGHT: f32 = 32.0;
+const SIDEBAR_ROW_HEIGHT: f32 = 24.0;
 /// Shared height for the top header bars across panels.
 const PANEL_HEADER_HEIGHT: f32 = 48.0;
 
