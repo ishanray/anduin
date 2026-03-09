@@ -1,5 +1,5 @@
 use crate::SIDEBAR_ROW_HEIGHT;
-use crate::app::{DiffSearchCacheEntry, Message, ProjectSearchResponse, SidebarTarget, State};
+use crate::app::{Commit, DiffSearchCacheEntry, Message, ProjectSearchResponse, SidebarTarget, State};
 use crate::git;
 use crate::git::diff::{ChangedFile, FileDiff, FileStatus};
 use crate::search::{self, ProjectSearchResult, find_match_line_indices_with_lower};
@@ -297,4 +297,65 @@ pub(crate) fn maybe_run_project_search(state: &mut State) -> Task<Message> {
         },
         move |result| Message::ProjectSearchResults(request_id, result),
     )
+}
+
+pub(crate) fn load_commits(
+    repo_path: PathBuf,
+    count: usize,
+    skip: usize,
+) -> Result<Vec<Commit>, String> {
+    let entries = git::cli::git_log(&repo_path, count, skip).map_err(|e| e.to_string())?;
+    Ok(entries
+        .into_iter()
+        .map(|(hash, author, date, message)| {
+            let short_hash = if hash.len() >= 8 {
+                hash[..8].to_owned()
+            } else {
+                hash.clone()
+            };
+            Commit {
+                hash,
+                short_hash,
+                author,
+                date,
+                message,
+            }
+        })
+        .collect())
+}
+
+pub(crate) fn load_commit_files(
+    repo_path: PathBuf,
+    sha: String,
+) -> Result<Vec<ChangedFile>, String> {
+    let entries = git::cli::git_commit_files(&repo_path, &sha).map_err(|e| e.to_string())?;
+    Ok(entries
+        .into_iter()
+        .map(|(status_char, path)| {
+            let status = match status_char {
+                'A' => FileStatus::Added,
+                'D' => FileStatus::Deleted,
+                'M' => FileStatus::Modified,
+                'R' => FileStatus::Renamed,
+                _ => FileStatus::Other,
+            };
+            ChangedFile {
+                path,
+                status,
+                staged: false,
+                unstaged: false,
+            }
+        })
+        .collect())
+}
+
+pub(crate) fn load_commit_file_diff(
+    repo_path: PathBuf,
+    sha: String,
+    file_path: String,
+    status: FileStatus,
+) -> Result<FileDiff, String> {
+    let raw = git::cli::git_diff_commit_file(&repo_path, &sha, &file_path)
+        .map_err(|e| e.to_string())?;
+    Ok(git::diff::parse_unified_diff(&raw, &file_path, status))
 }
