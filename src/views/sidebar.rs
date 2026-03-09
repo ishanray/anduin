@@ -238,7 +238,7 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
     let footer = container(
         column![
             text(summary).size(12).font(MONO).color(fg),
-            text("↑↓ Move • Shift+↑↓ Select • Space Stage • A All • C Commit")
+            text("↑↓ Move • Shift+↑↓ Select • Space Stage • A Toggle all • C Commit")
                 .size(11)
                 .font(MONO)
                 .color(muted_fg),

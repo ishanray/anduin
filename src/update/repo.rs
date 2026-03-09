@@ -329,7 +329,7 @@ fn handle_file_list_keyboard_event(state: &mut State, event: &keyboard::Event) -
             toggle_stage_for_targeted_files(state)
         }
         keyboard::Key::Character(c) if no_shortcut_modifiers(*modifiers) && c.eq_ignore_ascii_case("a") => {
-            stage_all(state)
+            toggle_stage_all(state)
         }
         keyboard::Key::Character(c) if no_shortcut_modifiers(*modifiers) && c.eq_ignore_ascii_case("u") => {
             unstage_all(state)
@@ -448,10 +448,14 @@ fn toggle_stage_for_targeted_files(state: &mut State) -> Task<Message> {
     }
 }
 
-fn stage_all(state: &mut State) -> Task<Message> {
+fn toggle_stage_all(state: &mut State) -> Task<Message> {
     let count = state.files.len();
     if count == 0 {
         return Task::none();
+    }
+
+    if state.files.iter().all(|file| file.is_staged()) {
+        return unstage_all(state);
     }
 
     let repo_path = state.repo_path.clone();
