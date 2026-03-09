@@ -6,8 +6,8 @@ use crate::actions::{
     unstage_files,
 };
 use crate::app::{
-    ActivePane, BranchPicker, CommitComposer, Message, ProjectPicker, ProjectSearch, SidebarTarget,
-    State, StatusTone,
+    ActivePane, BranchPicker, CommitComposer, Message, ProjectPicker, ProjectSearch, SidebarTab,
+    SidebarTarget, State, StatusTone,
 };
 use crate::git;
 use crate::search::SEARCH_DEBOUNCE_MS;
@@ -133,6 +133,18 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
     state.sidebar_viewport_height = 0.0;
     state.active_pane = ActivePane::Sidebar;
     state.diff_editor.lose_focus();
+
+    // Reset history state
+    state.sidebar_tab = SidebarTab::Changes;
+    state.commits.clear();
+    state.selected_commit = None;
+    state.commit_files.clear();
+    state.commits_loading = false;
+    state.commits_exhausted = false;
+    state.history_selected_file = None;
+    state.history_selected_path = None;
+    state.history_diff = None;
+    state.history_commit_header = None;
 
     let repo_str = repo_path.to_string_lossy().into_owned();
     state.recent_repos.retain(|p| p != &repo_str);
@@ -523,6 +535,17 @@ pub(crate) fn handle_branch_switched(
             state.diff_search_cache.clear();
             state.initialized_tree = false;
             state.tree_dirty = true;
+
+            // Reset history (commits may differ on new branch)
+            state.commits.clear();
+            state.selected_commit = None;
+            state.commit_files.clear();
+            state.commits_loading = false;
+            state.commits_exhausted = false;
+            state.history_selected_file = None;
+            state.history_selected_path = None;
+            state.history_diff = None;
+            state.history_commit_header = None;
 
             state.queue_refresh()
         }
