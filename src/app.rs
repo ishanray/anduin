@@ -587,6 +587,7 @@ impl State {
             root.insert_file(index, file);
         }
         root.sort_files_recursive();
+        root.collapse_single_child_dirs();
         root
     }
 

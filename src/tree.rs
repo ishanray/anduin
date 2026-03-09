@@ -88,6 +88,40 @@ impl TreeDir {
         dir.insert_parts(index, file, &parts[1..], dir_path);
     }
 
+    /// Collapse chains of single-child directories into one node.
+    /// e.g. `a -> b -> c -> file.txt` becomes `a/b/c -> file.txt`
+    pub(crate) fn collapse_single_child_dirs(&mut self) {
+        // First, recursively collapse children
+        for dir in self.dirs.values_mut() {
+            dir.collapse_single_child_dirs();
+        }
+
+        // Then collapse at this level: if a child dir is the only child
+        // (no sibling dirs, no files at this level) and itself has no files,
+        // merge it upward
+        let dir_keys: Vec<String> = self.dirs.keys().cloned().collect();
+        for key in dir_keys {
+            let should_merge = {
+                let dir = &self.dirs[&key];
+                dir.dirs.len() == 1 && dir.files.is_empty()
+            };
+
+            if should_merge
+                && let Some(dir) = self.dirs.remove(&key)
+                && let Some((_, child)) = dir.dirs.into_iter().next()
+            {
+                let merged = Self {
+                    name: format!("{}/{}", dir.name, child.name),
+                    path: child.path,
+                    dirs: child.dirs,
+                    files: child.files,
+                };
+                let merged_key = merged.name.clone();
+                self.dirs.insert(merged_key, merged);
+            }
+        }
+    }
+
     pub(crate) fn collect_dir_paths(&self, paths: &mut Vec<String>) {
         for dir in self.dirs.values() {
             paths.push(dir.path.clone());
