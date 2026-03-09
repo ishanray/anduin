@@ -1,14 +1,18 @@
 use crate::app::{CommitComposer, Message, State};
+use crate::views::project_search::view_search_content;
 use crate::{MONO, PANEL_HEADER_HEIGHT};
-use iced::widget::{
-    Space, button, column, container, row, rule, text, text_input,
-};
+use iced::widget::{Space, button, column, container, row, rule, text, text_input};
 use iced::{Element, Fill, Theme};
 
 pub(crate) fn view_diff(state: &State) -> Element<'_, Message> {
     let theme = state.app_theme();
     let palette = theme.extended_palette();
+    let panel_bg = palette.background.weak.color;
     let muted_fg = palette.background.strong.text.scale_alpha(0.6);
+
+    if let Some(search) = state.project_search.as_ref().filter(|s| s.is_open) {
+        return view_search_content(state, search);
+    }
 
     let main_content: Element<'_, Message> = match &state.current_diff {
         Some(file) => {
@@ -54,8 +58,6 @@ pub(crate) fn view_diff(state: &State) -> Element<'_, Message> {
         main_content
     };
 
-    let panel_bg = palette.background.weak.color;
-
     container(content)
         .width(Fill)
         .height(Fill)
@@ -80,7 +82,10 @@ fn view_commit_composer<'a>(
     let helper_text = if staged_count == 0 {
         "No staged changes".to_owned()
     } else if unstaged_count == 0 {
-        format!("Committing {staged_count} staged file{}", if staged_count == 1 { "" } else { "s" })
+        format!(
+            "Committing {staged_count} staged file{}",
+            if staged_count == 1 { "" } else { "s" }
+        )
     } else {
         format!(
             "Committing {staged_count} staged file{} • {unstaged_count} unstaged excluded",
@@ -89,12 +94,20 @@ fn view_commit_composer<'a>(
     };
 
     let commit_button = if composer.can_submit(staged_count) {
-        button(text(if composer.submitting { "Committing…" } else { "Commit" }))
-            .on_press(Message::SubmitCommit)
-            .style(button::primary)
+        button(text(if composer.submitting {
+            "Committing…"
+        } else {
+            "Commit"
+        }))
+        .on_press(Message::SubmitCommit)
+        .style(button::primary)
     } else {
-        button(text(if composer.submitting { "Committing…" } else { "Commit" }))
-            .style(button::secondary)
+        button(text(if composer.submitting {
+            "Committing…"
+        } else {
+            "Commit"
+        }))
+        .style(button::secondary)
     };
 
     let error_line: Element<'a, Message> = if let Some(error) = composer.error.as_ref() {

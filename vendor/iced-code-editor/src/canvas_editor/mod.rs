@@ -940,6 +940,16 @@ impl CodeEditor {
         self.search_replace_enabled
     }
 
+    /// Returns `true` if the search dialog is currently open.
+    pub fn is_search_open(&self) -> bool {
+        self.search_state.is_open
+    }
+
+    /// Returns the current search query, if any.
+    pub fn search_query(&self) -> &str {
+        &self.search_state.query
+    }
+
     /// Sets the line wrapping with builder pattern.
     ///
     /// # Arguments

@@ -236,14 +236,28 @@ impl BranchPicker {
     }
 
     pub(crate) fn filtered_branches(&self) -> Vec<&str> {
+        if self.filter.is_empty() {
+            return self.branches.iter().map(String::as_str).collect();
+        }
+
         let filter_lower = self.filter.to_lowercase();
-        self.branches
-            .iter()
-            .filter(|b| {
-                self.filter.is_empty() || b.to_lowercase().contains(&filter_lower)
-            })
-            .map(String::as_str)
-            .collect()
+
+        // Partition into prefix matches and other substring matches,
+        // preserving recency order within each group.
+        let mut prefix = Vec::new();
+        let mut rest = Vec::new();
+
+        for b in &self.branches {
+            let lower = b.to_lowercase();
+            if lower.starts_with(&filter_lower) {
+                prefix.push(b.as_str());
+            } else if lower.contains(&filter_lower) {
+                rest.push(b.as_str());
+            }
+        }
+
+        prefix.extend(rest);
+        prefix
     }
 }
 

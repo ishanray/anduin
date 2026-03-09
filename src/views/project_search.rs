@@ -1,290 +1,33 @@
 use crate::app::{Message, ProjectSearch, State};
 use crate::git::diff::FileStatus;
-use crate::search::{
-    self, ContextLine, ProjectSearchResult, SEARCH_LINE_HEIGHT, find_case_insensitive,
-};
+use crate::search::{self, ContextLine, ProjectSearchResult};
 use crate::{MONO, PANEL_HEADER_HEIGHT, lucide};
-use iced::alignment::Horizontal;
-use iced::theme::{Palette, palette::Extended};
+use iced::theme::palette::Extended;
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    Space, button, column, container, mouse_area, row, scrollable, text, text_input,
+    Space, button, column, container, mouse_area, row, rule, scrollable, text, text_input,
 };
 use iced::{Color, Element, Fill, Theme};
 
-pub(crate) fn view_project_search<'a>(
+/// Content area when project search is active.
+/// Renders the search header + results for the currently selected file.
+pub(crate) fn view_search_content<'a>(
     state: &'a State,
     search: &'a ProjectSearch,
 ) -> Element<'a, Message> {
     let theme = state.app_theme();
     let palette = theme.extended_palette();
-    let fg = palette.background.base.text;
-    let muted_fg = palette.background.strong.text.scale_alpha(0.6);
     let panel_bg = palette.background.weak.color;
-    let summary = &search.cached_summary;
-
-    let case_button_label = if search.case_sensitive { "Aa" } else { "aa" };
-    let case_button = button(text(case_button_label).font(MONO).size(13))
-        .on_press(Message::ProjectSearchToggleCase)
-        .padding([6, 10])
-        .style(if search.case_sensitive {
-            button::primary
-        } else {
-            button::secondary
-        });
-
-    let bg_base_color = palette.background.base.color;
-    let bg_strong_color = palette.background.strong.color;
-
-    let search_input_box = container(
-        row![
-            lucide::search().size(18).color(muted_fg),
-            text_input("Search all diffs", &search.query)
-                .id(search.input_id.clone())
-                .on_input(Message::ProjectSearchQueryChanged)
-                .padding([6, 8])
-                .size(15)
-                .font(MONO),
-            case_button,
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center),
-    )
-    .padding([8, 12])
-    .width(400)
-    .style(move |_: &Theme| {
-        container::Style::default()
-            .background(bg_base_color)
-            .border(iced::Border {
-                color: bg_strong_color,
-                width: 1.0,
-                radius: 8.0.into(),
-            })
-            .shadow(iced::Shadow {
-                color: iced::Color::BLACK.scale_alpha(0.05),
-                offset: iced::Vector::new(0.0, 2.0),
-                blur_radius: 8.0,
-            })
-    });
-
-    let header = container(
-        row![
-            search_input_box,
-            text(summary).size(12).font(MONO).color(muted_fg),
-            Space::new().width(Fill),
-            button(lucide::x().size(20).color(fg))
-                .on_press(Message::CloseProjectSearch)
-                .style(button::text)
-                .padding([6, 8]),
-        ]
-        .spacing(12)
-        .align_y(iced::Alignment::Center),
-    )
-    .padding([10, 16])
-    .height(PANEL_HEADER_HEIGHT)
-    .style(move |_: &Theme| {
-        container::Style::default()
-            .background(bg_base_color)
-            .border(iced::Border {
-                color: bg_strong_color,
-                width: 1.0,
-                radius: 0.0.into(),
-            })
-    });
-
-    let filtered_sidebar = view_search_sidebar(state, search);
-    let results = view_project_search_results(state, search, muted_fg);
-
-    container(
-        column![
-            header,
-            row![
-                container(filtered_sidebar).width(300),
-                container(results).width(Fill)
-            ]
-            .height(Fill)
-        ]
-        .height(Fill),
-    )
-    .height(Fill)
-    .style(move |_: &Theme| container::Style::default().background(panel_bg))
-    .into()
-}
-
-fn view_search_sidebar<'a>(state: &'a State, search: &'a ProjectSearch) -> Element<'a, Message> {
-    let theme = state.app_theme();
-    let palette = theme.extended_palette();
-    let fg = palette.background.base.text;
     let muted_fg = palette.background.strong.text.scale_alpha(0.6);
-    let item_bg = palette.background.base.color;
-    let item_hover_bg = palette.background.weak.color;
-    let sidebar_border = palette.background.strong.color;
+
+    let header = view_search_header(state, search);
 
     let body: Element<'a, Message> = if search.query.is_empty() {
         container(
             column![
-                lucide::search().size(24).color(muted_fg),
-                text("Type to search across changed diffs")
-                    .size(13)
-                    .color(muted_fg),
-            ]
-            .spacing(8)
-            .align_x(iced::Alignment::Center),
-        )
-        .center_x(Fill)
-        .padding([32, 16])
-        .into()
-    } else if search.searching {
-        container(text("Searching…").size(13).color(muted_fg))
-            .center_x(Fill)
-            .padding([32, 16])
-            .into()
-    } else if search.results.is_empty() {
-        container(text("No matches in current diffs").size(13).color(muted_fg))
-            .center_x(Fill)
-            .padding([32, 16])
-            .into()
-    } else {
-        let items: Vec<Element<'a, Message>> = state
-            .files
-            .iter()
-            .filter(|file| search.matching_paths.contains(&file.path))
-            .filter_map(|file| {
-                let result = &search.results[*search.result_index_by_path.get(&file.path)?];
-                let status_color = file_status_color(palette, result.file_status, muted_fg);
-                let (dir, name) = split_path_parts(&result.file_path);
-                let count_badge = if result.total_matches < 10 {
-                    container(
-                        text(&result.total_matches_display)
-                            .size(11)
-                            .font(MONO)
-                            .color(status_color)
-                            .width(Fill)
-                            .align_x(Horizontal::Center)
-                            .wrapping(Wrapping::None),
-                    )
-                    .width(32)
-                } else {
-                    container(
-                        text(&result.total_matches_display)
-                            .size(11)
-                            .font(MONO)
-                            .color(status_color)
-                            .wrapping(Wrapping::None),
-                    )
-                };
-
-                Some(
-                    mouse_area(
-                        container(
-                            row![
-                                container(lucide::file().size(14).color(muted_fg)).width(20),
-                                container(
-                                    column![
-                                        text(name)
-                                            .size(13)
-                                            .font(MONO)
-                                            .color(fg)
-                                            .width(Fill)
-                                            .wrapping(Wrapping::None),
-                                        text(dir)
-                                            .size(11)
-                                            .font(MONO)
-                                            .color(muted_fg)
-                                            .width(Fill)
-                                            .wrapping(Wrapping::None),
-                                    ]
-                                    .spacing(2)
-                                    .width(Fill)
-                                    .clip(true),
-                                )
-                                .width(Fill)
-                                .clip(true),
-                                count_badge.padding([3, 8]).style(move |_: &Theme| {
-                                    container::Style::default()
-                                        .background(status_color.scale_alpha(0.12))
-                                        .border(iced::Border {
-                                            color: status_color.scale_alpha(0.25),
-                                            width: 1.0,
-                                            radius: 10.0.into(),
-                                        })
-                                }),
-                            ]
-                            .spacing(8)
-                            .align_y(iced::Alignment::Center)
-                            .clip(true),
-                        )
-                        .width(Fill)
-                        .padding([10, 14])
-                        .style(move |_: &Theme| {
-                            container::Style::default()
-                                .background(item_bg)
-                                .border(iced::Border {
-                                    color: Color::TRANSPARENT,
-                                    width: 0.0,
-                                    radius: 8.0.into(),
-                                })
-                        }),
-                    )
-                    .on_press(Message::ProjectSearchScrollToFile(result.file_path.clone()))
-                    .on_enter(Message::ProjectSearchScrollToFile(result.file_path.clone()))
-                    .into(),
-                )
-            })
-            .collect();
-
-        scrollable(column(items).spacing(2).padding([6, 8]))
-            .height(Fill)
-            .into()
-    };
-
-    let file_count_text = &search.cached_file_summary;
-
-    container(
-        column![
-            container(
-                row![
-                    text("Files").size(12).font(MONO).color(muted_fg),
-                    Space::new().width(Fill),
-                    text(file_count_text).size(12).font(MONO).color(fg),
-                ]
-                .align_y(iced::Alignment::Center),
-            )
-            .padding([12, 16]),
-            body,
-        ]
-        .height(Fill),
-    )
-    .style(move |_: &Theme| {
-        container::Style::default()
-            .background(item_hover_bg)
-            .border(iced::Border {
-                color: sidebar_border,
-                width: 1.0,
-                radius: 0.0.into(),
-            })
-    })
-    .into()
-}
-
-fn view_project_search_results<'a>(
-    state: &'a State,
-    search: &'a ProjectSearch,
-    muted_fg: Color,
-) -> Element<'a, Message> {
-    let theme = state.app_theme();
-    let palette = theme.extended_palette();
-    let panel_bg = palette.background.base.color;
-    let fg = palette.background.base.text;
-
-    let content: Element<'a, Message> = if search.query.is_empty() {
-        container(
-            column![
                 lucide::search().size(32).color(muted_fg),
-                text("Search all changed diffs").size(16).color(muted_fg),
-                text("Use ⌘⇧F to open search")
-                    .size(12)
-                    .font(MONO)
+                text("Search across changed diffs")
+                    .size(16)
                     .color(muted_fg),
             ]
             .spacing(12)
@@ -293,7 +36,7 @@ fn view_project_search_results<'a>(
         .center(Fill)
         .into()
     } else if search.searching {
-        container(text("Searching diffs…").size(16).color(muted_fg))
+        container(text("Searching…").size(16).color(muted_fg))
             .center(Fill)
             .into()
     } else if search.results.is_empty() {
@@ -310,43 +53,168 @@ fn view_project_search_results<'a>(
         )
         .center(Fill)
         .into()
+    } else if let Some(selected_path) = &state.selected_path {
+        if let Some(&idx) = search.result_index_by_path.get(selected_path) {
+            let result = &search.results[idx];
+            view_file_search_results(state, search, result)
+        } else {
+            container(
+                column![
+                    text("No matches in this file")
+                        .size(14)
+                        .color(muted_fg),
+                    text("Select a file with matches from the sidebar")
+                        .size(12)
+                        .font(MONO)
+                        .color(muted_fg),
+                ]
+                .spacing(6)
+                .align_x(iced::Alignment::Center),
+            )
+            .center(Fill)
+            .into()
+        }
     } else {
-        let sections: Vec<Element<'a, Message>> = search
-            .results
-            .iter()
-            .map(|result| view_search_result_file(state, search, result))
-            .collect();
-
-        let summary_bar = container(
-            row![
-                text("Results").size(12).font(MONO).color(muted_fg),
-                Space::new().width(Fill),
-                text(&search.cached_result_summary)
-                    .size(12)
-                    .font(MONO)
-                    .color(fg),
-            ]
-            .align_y(iced::Alignment::Center),
+        container(
+            text("Select a file to view matches")
+                .size(14)
+                .color(muted_fg),
         )
-        .padding([12, 20]);
-
-        column![
-            summary_bar,
-            scrollable(column(sections).spacing(16).padding([8, 20]))
-                .id(search.results_scroll_id.clone())
-                .height(Fill)
-        ]
-        .height(Fill)
+        .center(Fill)
         .into()
     };
 
-    container(content)
+    container(column![header, rule::horizontal(1), body].height(Fill))
+        .width(Fill)
         .height(Fill)
         .style(move |_: &Theme| container::Style::default().background(panel_bg))
         .into()
 }
 
-fn view_search_result_file<'a>(
+fn view_search_header<'a>(state: &'a State, search: &'a ProjectSearch) -> Element<'a, Message> {
+    let theme = state.app_theme();
+    let palette = theme.extended_palette();
+    let fg = palette.background.base.text;
+    let muted_fg = palette.background.strong.text.scale_alpha(0.6);
+    let bg_base_color = palette.background.base.color;
+    let bg_strong_color = palette.background.strong.color;
+    let input_value_color = palette.background.base.text;
+    let input_placeholder_color = muted_fg;
+    let input_selection_color = palette.primary.weak.color;
+    let input_icon_color = muted_fg;
+    let summary = &search.cached_summary;
+
+    let input_style = move |_theme: &Theme, _status: text_input::Status| text_input::Style {
+        background: iced::Background::Color(Color::TRANSPARENT),
+        border: iced::Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: 0.0.into(),
+        },
+        icon: input_icon_color,
+        placeholder: input_placeholder_color,
+        value: input_value_color,
+        selection: input_selection_color,
+    };
+
+    let case_button_label = if search.case_sensitive { "Aa" } else { "aa" };
+    let case_button_bg = if search.case_sensitive {
+        palette.primary.base.color
+    } else {
+        palette.background.strong.color
+    };
+    let case_button_bg_hover = if search.case_sensitive {
+        palette.primary.strong.color
+    } else {
+        palette.background.strong.color.scale_alpha(0.9)
+    };
+    let case_button_fg = if search.case_sensitive {
+        palette.primary.base.text
+    } else {
+        fg
+    };
+    let case_button_border = if search.case_sensitive {
+        palette.primary.strong.color
+    } else {
+        palette.background.base.text.scale_alpha(0.12)
+    };
+
+    let case_button = button(
+        text(case_button_label)
+            .size(13)
+            .font(MONO)
+            .color(case_button_fg),
+    )
+    .on_press(Message::ProjectSearchToggleCase)
+    .padding([4, 10])
+    .style(move |_theme: &Theme, status: button::Status| {
+        let background = match status {
+            button::Status::Hovered => case_button_bg_hover,
+            _ => case_button_bg,
+        };
+        button::Style {
+            background: Some(iced::Background::Color(background)),
+            text_color: case_button_fg,
+            border: iced::Border {
+                color: case_button_border,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            shadow: iced::Shadow::default(),
+            snap: false,
+        }
+    });
+
+    let search_input_box = container(
+        row![
+            lucide::search().size(16).color(muted_fg),
+            text_input("Search all diffs", &search.query)
+                .id(search.input_id.clone())
+                .on_input(Message::ProjectSearchQueryChanged)
+                .padding([4, 8])
+                .size(15)
+                .width(Fill)
+                .style(input_style),
+            case_button,
+        ]
+        .spacing(8)
+        .align_y(iced::Alignment::Center),
+    )
+    .padding([0, 12])
+    .height(36)
+    .center_y(36)
+    .width(400)
+    .style(move |_: &Theme| {
+        container::Style::default()
+            .background(bg_base_color)
+            .border(iced::Border {
+                color: bg_strong_color,
+                width: 1.0,
+                radius: 8.0.into(),
+            })
+    });
+
+    container(
+        row![
+            search_input_box,
+            text(summary).size(12).font(MONO).color(muted_fg),
+            Space::new().width(Fill),
+            button(lucide::x().size(20).color(fg))
+                .on_press(Message::CloseProjectSearch)
+                .style(button::text)
+                .padding([6, 8]),
+        ]
+        .spacing(12)
+        .align_y(iced::Alignment::Center),
+    )
+    .padding([0, 16])
+    .height(PANEL_HEADER_HEIGHT)
+    .center_y(PANEL_HEADER_HEIGHT)
+    .style(move |_: &Theme| container::Style::default().background(bg_base_color))
+    .into()
+}
+
+fn view_file_search_results<'a>(
     state: &'a State,
     search: &'a ProjectSearch,
     result: &'a ProjectSearchResult,
@@ -355,40 +223,28 @@ fn view_search_result_file<'a>(
     let palette = theme.extended_palette();
     let fg = palette.background.base.text;
     let muted_fg = palette.background.strong.text.scale_alpha(0.6);
-    let card_bg = palette.background.weak.color;
-    let card_border = palette.background.strong.color;
     let status_color = file_status_color(palette, result.file_status, muted_fg);
     let (dir, name) = split_path_parts(&result.file_path);
 
-    let header = container(
+    let file_header = container(
         row![
-            container(lucide::file().size(18).color(muted_fg)).width(24),
-            column![
-                text(name).size(15).font(MONO).color(fg),
-                text(dir).size(12).font(MONO).color(muted_fg),
-            ]
-            .spacing(2),
+            container(lucide::file().size(14).color(muted_fg)).width(20),
+            text(name).size(13).font(MONO).color(fg),
+            text(format!(" {dir}")).size(11).font(MONO).color(muted_fg),
             Space::new().width(Fill),
-            container(
-                text(format!("{} matches", result.total_matches))
-                    .size(11)
-                    .font(MONO)
-                    .color(status_color),
-            )
-            .padding([4, 10])
-            .style(move |_: &Theme| {
-                container::Style::default()
-                    .background(status_color.scale_alpha(0.12))
-                    .border(iced::Border {
-                        color: status_color.scale_alpha(0.3),
-                        width: 1.0,
-                        radius: 12.0.into(),
-                    })
-            }),
+            text(format!(
+                "{} match{}",
+                result.total_matches,
+                if result.total_matches == 1 { "" } else { "es" }
+            ))
+            .size(11)
+            .font(MONO)
+            .color(status_color),
         ]
+        .spacing(6)
         .align_y(iced::Alignment::Center),
     )
-    .padding([12, 16]);
+    .padding([8, 4]);
 
     let mut block_elements: Vec<Element<'a, Message>> = Vec::new();
     for (index, context) in result.matches.iter().enumerate() {
@@ -413,27 +269,12 @@ fn view_search_result_file<'a>(
         block_elements.push(view_search_match_context(state, search, result, context));
     }
 
-    container(
-        column![
-            header,
-            container(column(block_elements).spacing(8)).padding([0, 12])
-        ]
-        .spacing(4),
+    scrollable(
+        column![file_header, column(block_elements).spacing(8)]
+            .spacing(2)
+            .padding([8, 20]),
     )
-    .style(move |_: &Theme| {
-        container::Style::default()
-            .background(card_bg)
-            .border(iced::Border {
-                color: card_border,
-                width: 1.0,
-                radius: 12.0.into(),
-            })
-            .shadow(iced::Shadow {
-                color: iced::Color::BLACK.scale_alpha(0.04),
-                offset: iced::Vector::new(0.0, 2.0),
-                blur_radius: 6.0,
-            })
-    })
+    .height(Fill)
     .into()
 }
 
@@ -451,7 +292,7 @@ fn view_search_match_context<'a>(
     let rows: Vec<Element<'a, Message>> = context
         .lines
         .iter()
-        .map(|line| view_search_context_line(state, search, result, line))
+        .map(|line| view_search_context_line(state, search, line))
         .collect();
 
     mouse_area(
@@ -482,10 +323,8 @@ fn view_search_match_context<'a>(
 fn view_search_context_line<'a>(
     state: &'a State,
     search: &'a ProjectSearch,
-    result: &'a ProjectSearchResult,
     line: &'a ContextLine,
 ) -> Element<'a, Message> {
-    let _ = result;
     let theme = state.app_theme();
     let palette = theme.extended_palette();
     let fg = palette.background.base.text;
@@ -578,7 +417,7 @@ fn view_search_context_line<'a>(
         .align_y(iced::Alignment::Center),
     )
     .width(Fill)
-    .height(SEARCH_LINE_HEIGHT)
+    .height(search::SEARCH_LINE_HEIGHT)
     .clip(true)
     .style(move |_: &Theme| {
         let background = if line.is_match {
@@ -631,7 +470,7 @@ pub(crate) fn split_first_match<'a>(
     let start = if case_sensitive {
         line.find(query)
     } else {
-        find_case_insensitive(line, query_lower)
+        search::find_case_insensitive(line, query_lower)
     };
 
     if let Some(start) = start {
@@ -665,24 +504,6 @@ trait FileStatusPalette {
     fn danger_color(&self) -> Color;
     fn warning_color(&self) -> Color;
     fn primary_color(&self) -> Color;
-}
-
-impl FileStatusPalette for Palette {
-    fn success_color(&self) -> Color {
-        self.success
-    }
-
-    fn danger_color(&self) -> Color {
-        self.danger
-    }
-
-    fn warning_color(&self) -> Color {
-        self.primary
-    }
-
-    fn primary_color(&self) -> Color {
-        self.primary
-    }
 }
 
 impl FileStatusPalette for Extended {

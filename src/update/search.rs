@@ -1,8 +1,6 @@
 use crate::actions::{load_selected_diff, maybe_run_project_search, scroll_sidebar_to_selected};
 use crate::app::{Message, PendingDiffJump, ProjectSearchResponse, State};
 use iced::Task;
-use iced::widget::operation::scroll_to;
-use iced::widget::scrollable;
 
 pub(crate) fn handle_project_search_query_changed(
     state: &mut State,
@@ -10,6 +8,7 @@ pub(crate) fn handle_project_search_query_changed(
 ) -> Task<Message> {
     if let Some(search) = state.project_search.as_mut() {
         search.query = query;
+        search.input_focused = true;
         search.update_query_lower();
         if search.query.is_empty() {
             search.pending_run_at = None;
@@ -49,6 +48,31 @@ pub(crate) fn handle_project_search_results(
             if let Some(search) = state.project_search.as_mut() {
                 search.set_results(response.results);
             }
+
+            // Auto-select first matching file if current selection has no matches
+            let current_has_match = state.project_search.as_ref().is_some_and(|s| {
+                state
+                    .selected_path
+                    .as_ref()
+                    .is_some_and(|p| s.result_index_by_path.contains_key(p))
+            });
+
+            if let Some(index) = (!current_has_match)
+                .then(|| {
+                    state
+                        .project_search
+                        .as_ref()
+                        .and_then(|s| s.results.first())
+                        .and_then(|r| {
+                            state.files.iter().position(|f| f.path == r.file_path)
+                        })
+                })
+                .flatten()
+            {
+                let diff_task = load_selected_diff(state, index);
+                let scroll_task = scroll_sidebar_to_selected(state);
+                return Task::batch([diff_task, scroll_task]);
+            }
             Task::none()
         }
         Err(error) => {
@@ -67,29 +91,6 @@ pub(crate) fn handle_project_search_results(
     }
 }
 
-pub(crate) fn handle_project_search_scroll_to_file(
-    state: &State,
-    file_path: &str,
-) -> Task<Message> {
-    let Some(search) = state.project_search.as_ref() else {
-        return Task::none();
-    };
-    let Some(&idx) = search.result_index_by_path.get(file_path) else {
-        return Task::none();
-    };
-    let Some(result) = search.results.get(idx) else {
-        return Task::none();
-    };
-
-    scroll_to(
-        search.results_scroll_id.clone(),
-        scrollable::AbsoluteOffset {
-            x: 0.0,
-            y: result.estimated_scroll_y,
-        },
-    )
-}
-
 pub(crate) fn handle_project_search_jump_to(
     state: &mut State,
     file_path: String,
@@ -99,7 +100,9 @@ pub(crate) fn handle_project_search_jump_to(
         path: file_path.clone(),
         line_number,
     });
-    state.project_search = None;
+    if let Some(search) = state.project_search.as_mut() {
+        search.is_open = false;
+    }
 
     if let Some(index) = state.files.iter().position(|file| file.path == file_path) {
         let diff_task = load_selected_diff(state, index);

@@ -212,7 +212,7 @@ fn ensure_success(output: &Output, command: &str) -> Result<()> {
 /// Returns `(branches, current_branch)`.
 pub fn git_list_branches(repo_path: &Path) -> Result<(Vec<String>, String)> {
     let output = Command::new("git")
-        .args(["branch", "--format=%(refname:short)"])
+        .args(["branch", "--sort=-committerdate", "--format=%(refname:short)"])
         .current_dir(repo_path)
         .output()
         .context("failed to run git branch")?;
