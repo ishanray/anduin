@@ -50,6 +50,7 @@ fn test_state(files: Vec<ChangedFile>) -> State {
         show_shortcuts_help: false,
         current_branch: None,
         branch_picker: None,
+        recent_repos: Vec::new(),
     };
 
     state.sync_tree_state();
