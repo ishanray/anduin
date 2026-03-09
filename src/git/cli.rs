@@ -246,3 +246,99 @@ pub fn git_current_branch(repo_path: &Path) -> Result<String> {
 pub fn git_switch_branch(repo_path: &Path, branch: &str) -> Result<()> {
     run_git_command(repo_path, &["switch", branch])
 }
+
+/// Fetch commit log entries as `(hash, author, relative_date, subject)` tuples.
+#[allow(dead_code)]
+pub fn git_log(
+    repo_path: &Path,
+    count: usize,
+    skip: usize,
+) -> Result<Vec<(String, String, String, String)>> {
+    let output = Command::new("git")
+        .args([
+            "log",
+            "--format=%H%x00%an%x00%ar%x00%s",
+            &format!("-n{count}"),
+            &format!("--skip={skip}"),
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("failed to run git log")?;
+
+    ensure_success(&output, "git log")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut entries = Vec::new();
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.splitn(4, '\0').collect();
+        if parts.len() == 4 {
+            entries.push((
+                parts[0].to_owned(),
+                parts[1].to_owned(),
+                parts[2].to_owned(),
+                parts[3].to_owned(),
+            ));
+        }
+    }
+    Ok(entries)
+}
+
+/// List files changed in a given commit as `(status_char, path)` tuples.
+#[allow(dead_code)]
+pub fn git_commit_files(repo_path: &Path, sha: &str) -> Result<Vec<(char, String)>> {
+    let output = Command::new("git")
+        .args(["diff-tree", "--no-commit-id", "-r", "--name-status", sha])
+        .current_dir(repo_path)
+        .output()
+        .context("failed to run git diff-tree")?;
+
+    ensure_success(&output, "git diff-tree")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut files = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // Format: "M\tpath" or "A\tpath"
+        let status_char = line.as_bytes()[0] as char;
+        let path = line.get(2..).unwrap_or("").to_owned();
+        files.push((status_char, path));
+    }
+    Ok(files)
+}
+
+/// Get the diff for a single file within a specific commit.
+///
+/// Falls back to `git show` for the initial commit where `sha^` does not exist.
+#[allow(dead_code)]
+pub fn git_diff_commit_file(repo_path: &Path, sha: &str, file_path: &str) -> Result<String> {
+    // Try normal parent..commit diff first
+    let output = Command::new("git")
+        .args([
+            "diff",
+            &format!("{sha}^..{sha}"),
+            "--",
+            file_path,
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("failed to run git diff for commit file")?;
+
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).into_owned());
+    }
+
+    // Likely the initial commit (no parent) — fall back to git show
+    let output = Command::new("git")
+        .args(["show", "--format=", sha, "--", file_path])
+        .current_dir(repo_path)
+        .env("GIT_PAGER", "cat")
+        .output()
+        .context("failed to run git show for initial commit file")?;
+
+    ensure_success(&output, "git show (initial commit fallback)")?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
