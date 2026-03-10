@@ -243,7 +243,7 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
             if state.sidebar_tab == SidebarTab::Changes {
                 state.changes_focus = ChangesFocus::DiffView;
             }
-            state.diff_editor.request_focus();
+            state.diff_editor.gain_focus();
             state
                 .diff_editor
                 .update(&EditorMessage::OpenSearch)
@@ -827,7 +827,7 @@ fn handle_history_keyboard_event(state: &mut State, event: &keyboard::Event) -> 
             keyboard::Key::Named(keyboard::key::Named::Enter) => {
                 if state.history_diff.is_some() {
                     state.history_focus = HistoryFocus::DiffView;
-                    state.diff_editor.request_focus();
+                    state.diff_editor.gain_focus();
                 }
                 Task::none()
             }
@@ -900,7 +900,7 @@ fn handle_file_list_keyboard_event(state: &mut State, event: &keyboard::Event) -
             if state.current_diff.is_some() {
                 state.changes_focus = ChangesFocus::DiffView;
                 state.active_pane = ActivePane::Diff;
-                state.diff_editor.request_focus();
+                state.diff_editor.gain_focus();
             }
             Task::none()
         }

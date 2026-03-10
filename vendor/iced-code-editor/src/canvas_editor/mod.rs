@@ -1118,6 +1118,19 @@ impl CodeEditor {
     /// let mut editor = CodeEditor::new("fn main() {}", "rs");
     /// editor.lose_focus();
     /// ```
+    /// Programmatically gives focus to this editor, showing the cursor.
+    ///
+    /// This is the mutable counterpart to `request_focus()` — it both
+    /// claims the global focus ID and sets local state so the cursor
+    /// becomes visible immediately.
+    pub fn gain_focus(&mut self) {
+        self.request_focus();
+        self.has_canvas_focus = true;
+        self.focus_locked = false;
+        self.show_cursor = true;
+        self.reset_cursor_blink();
+    }
+
     pub fn lose_focus(&mut self) {
         self.has_canvas_focus = false;
         self.show_cursor = false;
