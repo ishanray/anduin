@@ -31,14 +31,6 @@ cargo install cargo-bundle
 cargo bundle --release
 ```
 
-### Deploy locally (macOS)
-
-```
-./scripts/deploy.sh
-```
-
-This builds a release bundle, copies it to `/Applications/Anduin.app`, and relaunches.
-
 ## License
 
 [Unlicense](LICENSE)
