@@ -2,6 +2,7 @@ use crate::app::{
     ActivePane, ChangesFocus, HistoryFocus, Message, SidebarTab, State, ThemeMode,
 };
 use crate::update;
+use iced::keyboard;
 use iced::widget::Id;
 use iced_code_editor::CodeEditor;
 use std::collections::{HashMap, HashSet};
@@ -88,6 +89,27 @@ fn repo_opened_closes_actions_panel() {
 
     let repo_path = std::env::current_dir().expect("current dir unavailable");
     let _ = update::update(&mut state, Message::RepoOpened(Some(repo_path)));
+
+    assert!(!state.show_actions_panel);
+}
+
+#[test]
+fn escape_closes_actions_panel_before_other_navigation() {
+    let mut state = test_state();
+    state.show_actions_panel = true;
+
+    let _ = update::update(
+        &mut state,
+        Message::KeyboardEvent(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Named(keyboard::key::Named::Escape),
+            modified_key: keyboard::Key::Named(keyboard::key::Named::Escape),
+            physical_key: keyboard::key::Physical::Code(keyboard::key::Code::Escape),
+            location: keyboard::Location::Standard,
+            modifiers: keyboard::Modifiers::default(),
+            text: None,
+            repeat: false,
+        }),
+    );
 
     assert!(!state.show_actions_panel);
 }

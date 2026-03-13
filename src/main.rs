@@ -24,7 +24,7 @@ use actions::{fetch_current_branch, load_changed_files};
 use app::{ActivePane, ChangesFocus, HistoryFocus, Message, SidebarTab, State, ThemeMode};
 use iced::event as iced_event;
 use iced::time;
-use iced::widget::{Id, Stack, container, row, text};
+use iced::widget::{Id, Stack, column, container, row, text};
 use iced::window;
 use iced::{Element, Fill, Font, Subscription, Task};
 use iced_code_editor::{CodeEditor, Message as EditorMessage, theme as editor_theme};
@@ -36,8 +36,8 @@ use std::time::Duration;
 use update::update;
 use views::context_menu::view_context_menu;
 use views::diff::view_diff;
+use views::actions_footer::view_actions_footer;
 use views::discard_confirm::view_discard_confirm;
-use views::shortcuts_help::view_shortcuts_help;
 use views::sidebar::view_sidebar;
 
 const MONO: Font = Font::MONOSPACE;
@@ -268,20 +268,17 @@ fn view(state: &State) -> Element<'_, Message> {
         container(sidebar).width(320),
         container(diff_view).width(Fill)
     ]
+    .height(Fill)
     .into();
+
+    let content_with_footer: Element<'_, Message> = column![main_content, view_actions_footer(state)]
+        .height(Fill)
+        .into();
 
     if state.discard_confirm.is_some() {
         let overlay = view_discard_confirm(state);
         Stack::new()
-            .push(main_content)
-            .push(overlay)
-            .width(Fill)
-            .height(Fill)
-            .into()
-    } else if state.show_actions_panel {
-        let overlay = view_shortcuts_help(state);
-        Stack::new()
-            .push(main_content)
+            .push(content_with_footer)
             .push(overlay)
             .width(Fill)
             .height(Fill)
@@ -289,12 +286,12 @@ fn view(state: &State) -> Element<'_, Message> {
     } else if state.sidebar_context_menu.is_some() {
         let overlay = view_context_menu(state);
         Stack::new()
-            .push(main_content)
+            .push(content_with_footer)
             .push(overlay)
             .width(Fill)
             .height(Fill)
             .into()
     } else {
-        main_content
+        content_with_footer
     }
 }

@@ -204,27 +204,16 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
         state.alt_pressed = alt;
     }
 
-    // Handle `?` (Shift+/) to toggle shortcuts help, and swallow keys while it's open.
-    if let keyboard::Event::KeyPressed {
-        key,
-        modified_key,
-        ..
-    } = &event
-    {
-        if matches!(modified_key.as_ref(), keyboard::Key::Character("?")) {
-            return update(state, Message::ToggleActionsPanel);
-        }
-        if state.show_actions_panel {
-            if matches!(
-                key.as_ref(),
-                keyboard::Key::Named(keyboard::key::Named::Escape)
-            ) {
-                state.show_actions_panel = false;
+    if state.show_actions_panel
+        && matches!(
+            &event,
+            keyboard::Event::KeyPressed {
+                key: keyboard::Key::Named(keyboard::key::Named::Escape),
+                ..
             }
-            return Task::none();
-        }
-    }
-    if state.show_actions_panel {
+        )
+    {
+        state.show_actions_panel = false;
         return Task::none();
     }
 
