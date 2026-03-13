@@ -143,44 +143,44 @@ fn build_changes_model(state: &State) -> FooterModel {
         ]
     };
 
-    let mut sections = vec![];
-
-    sections.push(section(
-        "Files",
-        vec![
-            action("space", "Stage / Unstage", has_changes),
-            action("a", "Stage all", has_unstaged),
-            action("u", "Unstage all", has_staged),
-            action("k", "Discard", has_changes),
-        ],
-    ));
-    sections.push(section(
-        "Commit",
-        vec![action("c", "Commit staged changes", has_staged)],
-    ));
-    sections.push(section(
-        "Repo",
-        vec![
-            action("b", "Switch branch", true),
-            action("p", "Switch project", true),
-        ],
-    ));
-    sections.push(section(
-        "Search & View",
-        vec![
-            action("/", "Search diff", state.current_diff.is_some()),
-            action("f", "Project search", true),
-            action("h", "Open history tab", true),
-        ],
-    ));
-    sections.push(section(
-        "Navigation",
-        vec![
-            action("↑↓", "Move selection", has_changes),
-            action("←→", "Collapse / Expand", has_changes),
-            action("enter", "Focus diff", state.current_diff.is_some()),
-        ],
-    ));
+    let sections = vec![
+        section(
+            "Files",
+            vec![
+                action("space", "Stage / Unstage", has_changes),
+                action("a", "Stage all", has_unstaged),
+                action("u", "Unstage all", has_staged),
+                action("k", "Discard", has_changes),
+            ],
+        ),
+        section(
+            "Commit",
+            vec![action("c", "Commit staged changes", has_staged)],
+        ),
+        section(
+            "Repo",
+            vec![
+                action("b", "Switch branch", true),
+                action("p", "Switch project", true),
+            ],
+        ),
+        section(
+            "Search & View",
+            vec![
+                action("/", "Search diff", state.current_diff.is_some()),
+                action("f", "Project search", true),
+                action("h", "Open history tab", true),
+            ],
+        ),
+        section(
+            "Navigation",
+            vec![
+                action("↑↓", "Move selection", has_changes),
+                action("←→", "Collapse / Expand", has_changes),
+                action("enter", "Focus diff", state.current_diff.is_some()),
+            ],
+        ),
+    ];
 
     FooterModel {
         target_label,
@@ -278,7 +278,10 @@ fn action_chip<'a>(action: &FooterAction, palette: &Extended) -> Element<'a, Mes
 
     row![
         keycap(&action.key, palette, action.enabled),
-        text(action.label.clone()).size(13).font(Font::DEFAULT).color(fg),
+        text(action.label.clone())
+            .size(13)
+            .font(Font::DEFAULT)
+            .color(fg),
     ]
     .spacing(6)
     .align_y(iced::Alignment::Center)
@@ -296,13 +299,16 @@ pub(crate) fn view_actions_footer(state: &State) -> Element<'_, Message> {
 
     let mut preview = row![text("Actions").size(13).color(title_fg)].spacing(12);
     for item in &model.preview_actions {
-        preview = preview.push(action_chip(item, &palette));
+        preview = preview.push(action_chip(item, palette));
     }
 
     let closed = row![
         preview.align_y(iced::Alignment::Center),
         Space::new().width(Fill),
-        text(model.mode_label.clone()).size(12).font(MONO).color(subtle_fg),
+        text(model.mode_label.clone())
+            .size(12)
+            .font(MONO)
+            .color(subtle_fg),
     ]
     .align_y(iced::Alignment::Center);
 
@@ -312,19 +318,26 @@ pub(crate) fn view_actions_footer(state: &State) -> Element<'_, Message> {
                 .size(14)
                 .color(title_fg),
             Space::new().width(Fill),
-            action_chip(&action("esc", "close", true), &palette),
+            action_chip(&action("esc", "close", true), palette),
         ]
         .align_y(iced::Alignment::Center);
 
         let mut sections_col = column![header, Space::new().height(8.0)];
         for section_model in &model.sections {
-            let mut actions_row = row![text(section_model.title.clone()).size(13).font(MONO).color(subtle_fg)]
-                .spacing(12)
-                .align_y(iced::Alignment::Center);
+            let mut actions_row = row![
+                text(section_model.title.clone())
+                    .size(13)
+                    .font(MONO)
+                    .color(subtle_fg)
+            ]
+            .spacing(12)
+            .align_y(iced::Alignment::Center);
             for item in &section_model.actions {
-                actions_row = actions_row.push(action_chip(item, &palette));
+                actions_row = actions_row.push(action_chip(item, palette));
             }
-            sections_col = sections_col.push(actions_row).push(Space::new().height(6.0));
+            sections_col = sections_col
+                .push(actions_row)
+                .push(Space::new().height(6.0));
         }
 
         column![sections_col, Space::new().height(6.0), closed]
@@ -353,9 +366,9 @@ pub(crate) fn view_actions_footer(state: &State) -> Element<'_, Message> {
 mod tests {
     use super::build_footer_model;
     use crate::app::{
-        ActivePane, ChangesFocus, Commit, HistoryFocus, SidebarTab, SidebarTarget, State,
-        ThemeMode,
+        ActivePane, ChangesFocus, Commit, HistoryFocus, SidebarTab, SidebarTarget, State, ThemeMode,
     };
+    use crate::git::diff::{ChangedFile, FileStatus};
     use iced::widget::Id;
     use iced_code_editor::CodeEditor;
     use std::collections::{HashMap, HashSet};
@@ -449,9 +462,9 @@ mod tests {
     fn changes_file_model_shows_file_target_and_commit_preview() {
         let mut state = test_state();
         state.current_branch = Some("main".to_owned());
-        state.files = vec![crate::git::diff::ChangedFile {
+        state.files = vec![ChangedFile {
             path: "src/main.rs".to_owned(),
-            status: crate::git::diff::FileStatus::Modified,
+            status: FileStatus::Modified,
             staged: false,
             unstaged: true,
         }];

@@ -1,10 +1,12 @@
-use crate::{COMMIT_ROW_HEIGHT, SIDEBAR_ROW_HEIGHT};
-use crate::app::{Commit, DiffSearchCacheEntry, Message, ProjectSearchResponse, SidebarTarget, State};
+use crate::app::{
+    Commit, DiffSearchCacheEntry, Message, ProjectSearchResponse, SidebarTarget, State,
+};
 use crate::git;
 use crate::git::diff::{ChangedFile, FileDiff, FileStatus};
 use crate::search::{self, ProjectSearchResult, find_match_line_indices_with_lower};
 use crate::tree::expand_parent_dirs;
 use crate::views::sidebar::selected_sidebar_row_bounds;
+use crate::{COMMIT_ROW_HEIGHT, SIDEBAR_ROW_HEIGHT};
 use iced::Task;
 use iced::widget::operation::scroll_to;
 use iced::widget::scrollable;
@@ -406,7 +408,7 @@ pub(crate) fn load_commit_file_diff(
     file_path: String,
     status: FileStatus,
 ) -> Result<FileDiff, String> {
-    let raw = git::cli::git_diff_commit_file(&repo_path, &sha, &file_path)
-        .map_err(|e| e.to_string())?;
+    let raw =
+        git::cli::git_diff_commit_file(&repo_path, &sha, &file_path).map_err(|e| e.to_string())?;
     Ok(git::diff::parse_unified_diff(&raw, &file_path, status))
 }

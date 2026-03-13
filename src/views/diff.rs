@@ -2,9 +2,11 @@ use crate::app::{ChangesFocus, CommitComposer, HistoryFocus, Message, SidebarTab
 use crate::git::diff::FileStatus;
 use crate::views::project_search::view_search_content;
 use crate::{MONO, PANEL_HEADER_HEIGHT, lucide};
-use iced::widget::text::Wrapping;
-use iced::widget::{Space, button, column, container, mouse_area, row, rule, scrollable, text, text_input};
 use iced::theme::palette::Extended;
+use iced::widget::text::Wrapping;
+use iced::widget::{
+    Space, button, column, container, mouse_area, row, rule, scrollable, text, text_input,
+};
 use iced::{Element, Fill, Length, Theme};
 
 pub(crate) fn view_diff(state: &State) -> Element<'_, Message> {
@@ -79,7 +81,11 @@ fn view_changes_diff<'a>(state: &'a State, muted_fg: iced::Color) -> Element<'a,
                 .height(Fill)
                 .style(move |_: &Theme| {
                     container::Style::default().border(iced::Border {
-                        color: if diff_focused { focus_color } else { iced::Color::TRANSPARENT },
+                        color: if diff_focused {
+                            focus_color
+                        } else {
+                            iced::Color::TRANSPARENT
+                        },
                         width: if diff_focused { 2.0 } else { 0.0 },
                         radius: 0.0.into(),
                     })
@@ -155,11 +161,17 @@ fn view_history_diff<'a>(state: &'a State, muted_fg: iced::Color) -> Element<'a,
         .width(Length::Fixed(200.0))
         .height(Fill)
         .style(move |_: &Theme| {
-            container::Style::default().background(header_bg).border(iced::Border {
-                color: if file_list_focused { focus_color } else { border_color },
-                width: if file_list_focused { 2.0 } else { 0.0 },
-                radius: 0.0.into(),
-            })
+            container::Style::default()
+                .background(header_bg)
+                .border(iced::Border {
+                    color: if file_list_focused {
+                        focus_color
+                    } else {
+                        border_color
+                    },
+                    width: if file_list_focused { 2.0 } else { 0.0 },
+                    radius: 0.0.into(),
+                })
         });
 
     // Right pane: diff editor or empty
@@ -202,7 +214,11 @@ fn view_history_diff<'a>(state: &'a State, muted_fg: iced::Color) -> Element<'a,
             .height(Fill)
             .style(move |_: &Theme| {
                 container::Style::default().border(iced::Border {
-                    color: if diff_focused { focus_color } else { iced::Color::TRANSPARENT },
+                    color: if diff_focused {
+                        focus_color
+                    } else {
+                        iced::Color::TRANSPARENT
+                    },
                     width: if diff_focused { 2.0 } else { 0.0 },
                     radius: 0.0.into(),
                 })

@@ -1,4 +1,6 @@
-use crate::app::{ActivePane, ChangesFocus, DiffSearchCacheEntry, HistoryFocus, Message, SidebarTab, State};
+use crate::app::{
+    ActivePane, ChangesFocus, DiffSearchCacheEntry, HistoryFocus, Message, SidebarTab, State,
+};
 use crate::git;
 use iced::Task;
 use iced_code_editor::Message as EditorMessage;

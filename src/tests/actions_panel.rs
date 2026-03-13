@@ -1,11 +1,10 @@
-use crate::app::{
-    ActivePane, ChangesFocus, HistoryFocus, Message, SidebarTab, State, ThemeMode,
-};
+use crate::app::{ActivePane, ChangesFocus, HistoryFocus, Message, SidebarTab, State, ThemeMode};
 use crate::update;
 use iced::keyboard;
 use iced::widget::Id;
 use iced_code_editor::CodeEditor;
 use std::collections::{HashMap, HashSet};
+use std::env;
 
 fn test_state() -> State {
     let theme_mode = ThemeMode::Dark;
@@ -87,7 +86,10 @@ fn repo_opened_closes_actions_panel() {
     let mut state = test_state();
     state.show_actions_panel = true;
 
-    let repo_path = std::env::current_dir().expect("current dir unavailable");
+    let repo_path = match env::current_dir() {
+        Ok(path) => path,
+        Err(error) => panic!("current dir unavailable: {error}"),
+    };
     let _ = update::update(&mut state, Message::RepoOpened(Some(repo_path)));
 
     assert!(!state.show_actions_panel);

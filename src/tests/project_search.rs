@@ -68,10 +68,10 @@ fn test_state(files: Vec<ChangedFile>) -> State {
         commit_list_scroll_id: Id::unique(),
         commit_list_scroll_offset: 0.0,
         commit_list_viewport_height: 0.0,
-            discard_confirm: None,
-            sidebar_context_menu: None,
-            window_size: None,
-            pending_settings_save: None,
+        discard_confirm: None,
+        sidebar_context_menu: None,
+        window_size: None,
+        pending_settings_save: None,
     };
 
     state.sync_tree_state();
@@ -684,10 +684,7 @@ fn query_change_marks_input_focused() {
         search.input_focused = false;
     }
 
-    let _ = update::update(
-        &mut state,
-        Message::ProjectSearchQueryChanged("x".into()),
-    );
+    let _ = update::update(&mut state, Message::ProjectSearchQueryChanged("x".into()));
 
     assert!(
         state

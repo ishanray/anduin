@@ -269,7 +269,11 @@ pub(crate) enum Message {
     FocusRoot,
     FocusDir(String),
     OpenInEditor(String),
-    ShowContextMenu { path: String, is_dir: bool, row_index: usize },
+    ShowContextMenu {
+        path: String,
+        is_dir: bool,
+        row_index: usize,
+    },
     CloseContextMenu,
     AddToGitignore(String),
     GitignoreFinished(Result<String, String>),
@@ -525,9 +529,7 @@ impl ProjectSearch {
 
 impl State {
     pub(crate) fn is_search_open(&self) -> bool {
-        self.project_search
-            .as_ref()
-            .is_some_and(|s| s.is_open)
+        self.project_search.as_ref().is_some_and(|s| s.is_open)
     }
 
     pub(crate) fn is_branch_picker_open(&self) -> bool {

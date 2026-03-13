@@ -4,7 +4,9 @@ use crate::tree::SidebarRow;
 use crate::{MONO, PANEL_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT, TREE_INDENT, lucide};
 use iced::theme::palette::Extended;
 use iced::widget::text::Wrapping;
-use iced::widget::{Space, Stack, button, column, container, mouse_area, row, rule, scrollable, text, text_input};
+use iced::widget::{
+    Space, Stack, button, column, container, mouse_area, row, rule, scrollable, text, text_input,
+};
 use iced::{Element, Fill, Length, Theme};
 
 pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
@@ -19,10 +21,7 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
         lucide::moon().size(16).color(fg)
     };
 
-    let branch_display = state
-        .current_branch
-        .as_deref()
-        .unwrap_or("Anduin");
+    let branch_display = state.current_branch.as_deref().unwrap_or("Anduin");
 
     let branch_label = button(
         row![
@@ -242,8 +241,7 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                             .filter(|s| s.is_open)
                             .and_then(|search| {
                                 let file = state.files.get(index)?;
-                                let result_idx =
-                                    search.result_index_by_path.get(&file.path)?;
+                                let result_idx = search.result_index_by_path.get(&file.path)?;
                                 search.results.get(*result_idx)
                             })
                             .map(|result| {
@@ -333,10 +331,26 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
         let changes_active = state.sidebar_tab == SidebarTab::Changes;
         let history_active = state.sidebar_tab == SidebarTab::History;
 
-        let changes_fg = if changes_active { primary_color } else { muted_fg };
-        let changes_underline = if changes_active { primary_color } else { iced::Color::TRANSPARENT };
-        let history_fg = if history_active { primary_color } else { muted_fg };
-        let history_underline = if history_active { primary_color } else { iced::Color::TRANSPARENT };
+        let changes_fg = if changes_active {
+            primary_color
+        } else {
+            muted_fg
+        };
+        let changes_underline = if changes_active {
+            primary_color
+        } else {
+            iced::Color::TRANSPARENT
+        };
+        let history_fg = if history_active {
+            primary_color
+        } else {
+            muted_fg
+        };
+        let history_underline = if history_active {
+            primary_color
+        } else {
+            iced::Color::TRANSPARENT
+        };
 
         let changes_tab: Element<'_, Message> = mouse_area(column![
             container(text("Changes").size(13).color(changes_fg)).padding([6, 12]),
@@ -458,7 +472,12 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
 
     let overlay = container(overlay_content)
         .width(Fill)
-        .padding(iced::Padding { top: PANEL_HEADER_HEIGHT + 1.0, right: 0.0, bottom: 0.0, left: 0.0 });
+        .padding(iced::Padding {
+            top: PANEL_HEADER_HEIGHT + 1.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 0.0,
+        });
 
     Stack::new()
         .push(base)
@@ -505,18 +524,17 @@ fn view_commit_list(state: &State) -> Element<'_, Message> {
                 .wrapping(Wrapping::None);
 
             let detail = format!("{} · {}", commit.author, commit.date);
-            let detail_line = text(detail).size(12).color(muted_fg).wrapping(Wrapping::None);
+            let detail_line = text(detail)
+                .size(12)
+                .color(muted_fg)
+                .wrapping(Wrapping::None);
 
             mouse_area(
-                container(
-                    column![message_line, detail_line].spacing(2),
-                )
-                .width(Fill)
-                .padding([6, 12])
-                .clip(true)
-                .style(move |_: &Theme| {
-                    container::Style::default().background(item_bg)
-                }),
+                container(column![message_line, detail_line].spacing(2))
+                    .width(Fill)
+                    .padding([6, 12])
+                    .clip(true)
+                    .style(move |_: &Theme| container::Style::default().background(item_bg)),
             )
             .on_press(Message::SelectCommit(i))
             .into()
@@ -539,7 +557,11 @@ fn view_commit_list(state: &State) -> Element<'_, Message> {
     let list = scrollable(column(items).spacing(1).padding([4, 8]))
         .id(state.commit_list_scroll_id.clone())
         .on_scroll(|viewport| {
-            Message::CommitListScrolled(viewport.absolute_offset().y, viewport.bounds().height, viewport.content_bounds().height)
+            Message::CommitListScrolled(
+                viewport.absolute_offset().y,
+                viewport.bounds().height,
+                viewport.content_bounds().height,
+            )
         })
         .height(Fill);
 
@@ -548,7 +570,11 @@ fn view_commit_list(state: &State) -> Element<'_, Message> {
         .width(Fill)
         .style(move |_: &Theme| {
             container::Style::default().border(iced::Border {
-                color: if commit_list_focused { focus_color } else { iced::Color::TRANSPARENT },
+                color: if commit_list_focused {
+                    focus_color
+                } else {
+                    iced::Color::TRANSPARENT
+                },
                 width: if commit_list_focused { 2.0 } else { 0.0 },
                 radius: 0.0.into(),
             })
@@ -600,7 +626,10 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
         let row_content = row![
             lucide::plus().size(12).color(create_fg),
             text("Create ").size(13).color(create_fg),
-            text(create_name.clone()).size(13).font(MONO).color(create_fg),
+            text(create_name.clone())
+                .size(13)
+                .font(MONO)
+                .color(create_fg),
         ]
         .spacing(4)
         .align_y(iced::Alignment::Center);
@@ -610,9 +639,7 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
                 container(row_content)
                     .width(Fill)
                     .padding([6, 12])
-                    .style(move |_: &Theme| {
-                        container::Style::default().background(create_bg)
-                    }),
+                    .style(move |_: &Theme| container::Style::default().background(create_bg)),
             )
             .on_press(Message::CreateBranch(create_name))
             .into(),
@@ -633,24 +660,23 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
             let mut row_content = row![].spacing(8).align_y(iced::Alignment::Center);
 
             if is_current {
-                row_content = row_content.push(
-                    lucide::check().size(12).color(success_color),
-                );
+                row_content = row_content.push(lucide::check().size(12).color(success_color));
             } else {
                 row_content = row_content.push(Space::new().width(12));
             }
 
             row_content = row_content.push(
-                text(branch_owned.clone()).size(13).font(MONO).color(item_fg),
+                text(branch_owned.clone())
+                    .size(13)
+                    .font(MONO)
+                    .color(item_fg),
             );
 
             mouse_area(
                 container(row_content)
                     .width(Fill)
                     .padding([6, 12])
-                    .style(move |_: &Theme| {
-                        container::Style::default().background(item_bg)
-                    }),
+                    .style(move |_: &Theme| container::Style::default().background(item_bg)),
             )
             .on_press(Message::SwitchBranch(branch_owned))
             .into()
@@ -660,13 +686,9 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
     all_items.extend(branch_items);
 
     let branch_list: Element<'_, Message> = if all_items.is_empty() {
-        container(
-            text("No matching branches")
-                .size(12)
-                .color(empty_color),
-        )
-        .padding([8, 12])
-        .into()
+        container(text("No matching branches").size(12).color(empty_color))
+            .padding([8, 12])
+            .into()
     } else {
         scrollable(column(all_items).spacing(2))
             .height(iced::Length::Shrink)
@@ -677,18 +699,10 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
 
     if let Some(error) = picker.error.as_ref() {
         content = content.push(
-            container(
-                text(error.as_str())
-                    .size(12)
-                    .font(MONO)
-                    .color(danger_color),
-            )
-            .padding([8, 12])
-            .width(Fill)
-            .style(move |_: &Theme| {
-                container::Style::default()
-                    .background(danger_bg)
-            }),
+            container(text(error.as_str()).size(12).font(MONO).color(danger_color))
+                .padding([8, 12])
+                .width(Fill)
+                .style(move |_: &Theme| container::Style::default().background(danger_bg)),
         );
     }
 
@@ -696,11 +710,13 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
         .width(Fill)
         .max_height(300.0)
         .style(move |_: &Theme| {
-            container::Style::default().background(bg).border(iced::Border {
-                color: border_color,
-                width: 1.0,
-                radius: 8.0.into(),
-            })
+            container::Style::default()
+                .background(bg)
+                .border(iced::Border {
+                    color: border_color,
+                    width: 1.0,
+                    radius: 8.0.into(),
+                })
         })
         .into()
 }
@@ -739,19 +755,15 @@ fn view_project_picker(state: &State) -> Element<'_, Message> {
             // Show just the directory name
             let name = repo.rsplit('/').next().unwrap_or(repo);
 
-            let row_content = row![
-                text(name).size(13).font(MONO).color(item_fg),
-            ]
-            .spacing(8)
-            .align_y(iced::Alignment::Center);
+            let row_content = row![text(name).size(13).font(MONO).color(item_fg),]
+                .spacing(8)
+                .align_y(iced::Alignment::Center);
 
             mouse_area(
                 container(row_content)
                     .width(Fill)
                     .padding([6, 12])
-                    .style(move |_: &Theme| {
-                        container::Style::default().background(item_bg)
-                    }),
+                    .style(move |_: &Theme| container::Style::default().background(item_bg)),
             )
             .on_press(Message::SwitchProject(repo_owned))
             .into()
@@ -759,13 +771,9 @@ fn view_project_picker(state: &State) -> Element<'_, Message> {
         .collect();
 
     let repo_list: Element<'_, Message> = if repo_items.is_empty() {
-        container(
-            text("No recent projects")
-                .size(12)
-                .color(empty_color),
-        )
-        .padding([8, 12])
-        .into()
+        container(text("No recent projects").size(12).color(empty_color))
+            .padding([8, 12])
+            .into()
     } else {
         scrollable(column(repo_items).spacing(2))
             .height(iced::Length::Shrink)
@@ -778,11 +786,13 @@ fn view_project_picker(state: &State) -> Element<'_, Message> {
         .width(Fill)
         .max_height(300.0)
         .style(move |_: &Theme| {
-            container::Style::default().background(bg).border(iced::Border {
-                color: border_color,
-                width: 1.0,
-                radius: 8.0.into(),
-            })
+            container::Style::default()
+                .background(bg)
+                .border(iced::Border {
+                    color: border_color,
+                    width: 1.0,
+                    radius: 8.0.into(),
+                })
         })
         .into()
 }

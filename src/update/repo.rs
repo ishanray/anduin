@@ -1,9 +1,9 @@
 use super::update;
 use crate::actions::{
-    commit_staged_changes, discard_files, fetch_current_branch, list_branches, load_changed_files,
-    load_selected_diff, load_selected_diff_without_focus_change, maybe_run_project_search,
-    scroll_commit_list_to_selected, scroll_sidebar_to_selected, stage_all_files, stage_files,
-    create_branch, switch_branch, unstage_all_files, unstage_files,
+    commit_staged_changes, create_branch, discard_files, fetch_current_branch, list_branches,
+    load_changed_files, load_selected_diff, load_selected_diff_without_focus_change,
+    maybe_run_project_search, scroll_commit_list_to_selected, scroll_sidebar_to_selected,
+    stage_all_files, stage_files, switch_branch, unstage_all_files, unstage_files,
 };
 use crate::app::{
     ActivePane, BranchPicker, ChangesFocus, CommitComposer, DiscardButton, DiscardConfirm,
@@ -64,7 +64,13 @@ pub(crate) fn handle_files_loaded(
             if let Some(index) = next_selection {
                 let diff_task = load_selected_diff(state, index);
                 let scroll_task = scroll_sidebar_to_selected(state);
-                return Task::batch([diff_task, scroll_task, refresh_task, search_task, branch_task]);
+                return Task::batch([
+                    diff_task,
+                    scroll_task,
+                    refresh_task,
+                    search_task,
+                    branch_task,
+                ]);
             }
 
             state.selected_file = None;
@@ -218,9 +224,7 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
     }
 
     // Close context menu on any keypress
-    if state.sidebar_context_menu.is_some()
-        && matches!(event, keyboard::Event::KeyPressed { .. })
-    {
+    if state.sidebar_context_menu.is_some() && matches!(event, keyboard::Event::KeyPressed { .. }) {
         state.sidebar_context_menu = None;
         return Task::none();
     }
@@ -567,15 +571,17 @@ pub(crate) fn handle_branch_picker_key_event(
                 Task::none()
             }
         }
-        keyboard::Key::Named(keyboard::key::Named::Escape) => {
-            handle_close_branch_picker(state)
-        }
+        keyboard::Key::Named(keyboard::key::Named::Escape) => handle_close_branch_picker(state),
         _ => Task::none(),
     }
 }
 
 pub(crate) fn handle_switch_branch(state: &mut State, branch: String) -> Task<Message> {
-    if state.branch_picker.as_ref().is_some_and(|p| p.current == branch) {
+    if state
+        .branch_picker
+        .as_ref()
+        .is_some_and(|p| p.current == branch)
+    {
         return handle_close_branch_picker(state);
     }
 
@@ -604,10 +610,7 @@ pub(crate) fn handle_branch_switched(
 
             state.branch_picker = None;
             state.current_branch = Some(branch_name.clone());
-            state.set_status_message(
-                format!("Switched to {branch_name}"),
-                StatusTone::Success,
-            );
+            state.set_status_message(format!("Switched to {branch_name}"), StatusTone::Success);
 
             state.files.clear();
             state.selected_file = None;
@@ -773,9 +776,7 @@ pub(crate) fn handle_project_picker_key_event(
                 Task::none()
             }
         }
-        keyboard::Key::Named(keyboard::key::Named::Escape) => {
-            handle_close_project_picker(state)
-        }
+        keyboard::Key::Named(keyboard::key::Named::Escape) => handle_close_project_picker(state),
         _ => Task::none(),
     }
 }
@@ -837,7 +838,15 @@ fn handle_project_search_keyboard_event(
 fn handle_commit_keyboard_event(state: &mut State, event: &keyboard::Event) -> Task<Message> {
     match shortcut_action_for_event(current_shortcut_platform(), event) {
         Some(ShortcutAction::CloseActive) => update(state, Message::CloseCommitComposer),
-        Some(ShortcutAction::OpenProject | ShortcutAction::OpenDiff | ShortcutAction::OpenBranchPicker | ShortcutAction::OpenProjectPicker | ShortcutAction::ToggleActionsPanel | ShortcutAction::PreviousTab | ShortcutAction::NextTab) => Task::none(),
+        Some(
+            ShortcutAction::OpenProject
+            | ShortcutAction::OpenDiff
+            | ShortcutAction::OpenBranchPicker
+            | ShortcutAction::OpenProjectPicker
+            | ShortcutAction::ToggleActionsPanel
+            | ShortcutAction::PreviousTab
+            | ShortcutAction::NextTab,
+        ) => Task::none(),
         None => {
             let keyboard::Event::KeyPressed { key, modifiers, .. } = event else {
                 return Task::none();
@@ -991,9 +1000,7 @@ fn handle_file_list_keyboard_event(state: &mut State, event: &keyboard::Event) -
         {
             update(state, Message::OpenCommitComposer)
         }
-        keyboard::Key::Named(keyboard::key::Named::Enter)
-            if no_shortcut_modifiers(*modifiers) =>
-        {
+        keyboard::Key::Named(keyboard::key::Named::Enter) if no_shortcut_modifiers(*modifiers) => {
             if state.current_diff.is_some() {
                 state.changes_focus = ChangesFocus::DiffView;
                 state.active_pane = ActivePane::Diff;
@@ -1379,9 +1386,7 @@ fn handle_discard_confirm_key_event(state: &mut State, event: &keyboard::Event) 
             }
             Task::none()
         }
-        keyboard::Key::Named(keyboard::key::Named::Escape) => {
-            update(state, Message::CancelDiscard)
-        }
+        keyboard::Key::Named(keyboard::key::Named::Escape) => update(state, Message::CancelDiscard),
         _ => Task::none(),
     }
 }

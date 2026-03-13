@@ -4,12 +4,14 @@ mod repo;
 mod search;
 
 use crate::actions::{load_selected_diff_without_focus_change, maybe_run_project_search};
-use crate::app::{ActivePane, HistoryFocus, Message, SidebarContextMenu, SidebarTarget, State, StatusTone};
+use crate::app::{
+    ActivePane, HistoryFocus, Message, SidebarContextMenu, SidebarTarget, State, StatusTone,
+};
+use iced::Task;
+use iced::clipboard;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
-use iced::clipboard;
-use iced::Task;
 
 pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
     match message {
@@ -99,9 +101,7 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::BranchSwitched(result) => repo::handle_branch_switched(state, result),
         Message::CreateBranch(branch) => repo::handle_create_branch(state, branch),
         Message::BranchCreated(result) => repo::handle_branch_created(state, result),
-        Message::CurrentBranchFetched(result) => {
-            repo::handle_current_branch_fetched(state, result)
-        }
+        Message::CurrentBranchFetched(result) => repo::handle_current_branch_fetched(state, result),
         Message::OpenProjectPicker => repo::handle_open_project_picker(state),
         Message::CloseProjectPicker => repo::handle_close_project_picker(state),
         Message::ProjectPickerFilterChanged(filter) => {
@@ -128,8 +128,7 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::CancelDiscard => repo::handle_cancel_discard(state),
         Message::WindowResized(size) => {
             state.window_size = Some(size);
-            state.pending_settings_save =
-                Some(Instant::now() + Duration::from_millis(500));
+            state.pending_settings_save = Some(Instant::now() + Duration::from_millis(500));
             Task::none()
         }
         Message::SettingsSaveTick => {
@@ -166,7 +165,11 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
                 Task::none()
             }
         }
-        Message::ShowContextMenu { path, is_dir, row_index } => {
+        Message::ShowContextMenu {
+            path,
+            is_dir,
+            row_index,
+        } => {
             state.sidebar_context_menu = Some(SidebarContextMenu {
                 path,
                 is_dir,
@@ -222,10 +225,7 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
 }
 
 /// Add a path to `.gitignore` and remove it from the index if tracked.
-fn add_to_gitignore(
-    repo_path: PathBuf,
-    rel_path: String,
-) -> Result<String, String> {
+fn add_to_gitignore(repo_path: PathBuf, rel_path: String) -> Result<String, String> {
     use std::fs;
     use std::io::Write;
 

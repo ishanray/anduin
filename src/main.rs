@@ -34,9 +34,9 @@ use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
 use update::update;
+use views::actions_footer::view_actions_footer;
 use views::context_menu::view_context_menu;
 use views::diff::view_diff;
-use views::actions_footer::view_actions_footer;
 use views::discard_confirm::view_discard_confirm;
 use views::sidebar::view_sidebar;
 
@@ -214,9 +214,7 @@ fn subscription(state: &State) -> Subscription<Message> {
     let mut subscriptions = vec![
         iced_event::listen_with(|event, _status, _window| match event {
             iced::Event::Keyboard(kb_event) => Some(Message::KeyboardEvent(kb_event)),
-            iced::Event::Window(window::Event::Resized(size)) => {
-                Some(Message::WindowResized(size))
-            }
+            iced::Event::Window(window::Event::Resized(size)) => Some(Message::WindowResized(size)),
             iced::Event::Window(window::Event::CloseRequested) => {
                 Some(Message::WindowCloseRequested)
             }
@@ -271,9 +269,10 @@ fn view(state: &State) -> Element<'_, Message> {
     .height(Fill)
     .into();
 
-    let content_with_footer: Element<'_, Message> = column![main_content, view_actions_footer(state)]
-        .height(Fill)
-        .into();
+    let content_with_footer: Element<'_, Message> =
+        column![main_content, view_actions_footer(state)]
+            .height(Fill)
+            .into();
 
     if state.discard_confirm.is_some() {
         let overlay = view_discard_confirm(state);

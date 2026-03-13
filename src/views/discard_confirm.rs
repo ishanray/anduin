@@ -1,5 +1,5 @@
 use crate::app::{DiscardButton, Message, State};
-use iced::widget::{button, center, column, container, mouse_area, row, text, Space};
+use iced::widget::{Space, button, center, column, container, mouse_area, row, text};
 use iced::{Border, Color, Element, Fill, Theme};
 
 pub(crate) fn view_discard_confirm(state: &State) -> Element<'_, Message> {
@@ -30,82 +30,72 @@ pub(crate) fn view_discard_confirm(state: &State) -> Element<'_, Message> {
     let discard_focused = focused == DiscardButton::Discard;
     let cancel_focused = focused == DiscardButton::Cancel;
 
-    let discard_button = button(
-        text("Discard")
-            .size(13)
-            .color(danger_text)
-            .center(),
-    )
-    .padding([6, 20])
-    .style(move |_: &Theme, status| {
-        let bg = match status {
-            button::Status::Hovered | button::Status::Pressed => {
-                iced::Background::Color(Color {
-                    a: danger_bg.a * 0.85,
-                    ..danger_bg
-                })
+    let discard_button = button(text("Discard").size(13).color(danger_text).center())
+        .padding([6, 20])
+        .style(move |_: &Theme, status| {
+            let bg = match status {
+                button::Status::Hovered | button::Status::Pressed => {
+                    iced::Background::Color(Color {
+                        a: danger_bg.a * 0.85,
+                        ..danger_bg
+                    })
+                }
+                _ => iced::Background::Color(danger_bg),
+            };
+            let border = if discard_focused {
+                Border {
+                    color: focus_color,
+                    width: 2.0,
+                    radius: 6.0.into(),
+                }
+            } else {
+                Border {
+                    radius: 6.0.into(),
+                    ..Border::default()
+                }
+            };
+            button::Style {
+                background: Some(bg),
+                text_color: danger_text,
+                border,
+                ..button::Style::default()
             }
-            _ => iced::Background::Color(danger_bg),
-        };
-        let border = if discard_focused {
-            Border {
-                color: focus_color,
-                width: 2.0,
-                radius: 6.0.into(),
-            }
-        } else {
-            Border {
-                radius: 6.0.into(),
-                ..Border::default()
-            }
-        };
-        button::Style {
-            background: Some(bg),
-            text_color: danger_text,
-            border,
-            ..button::Style::default()
-        }
-    })
-    .on_press(Message::ConfirmDiscard);
+        })
+        .on_press(Message::ConfirmDiscard);
 
-    let cancel_button = button(
-        text("Cancel")
-            .size(13)
-            .color(fg)
-            .center(),
-    )
-    .padding([6, 20])
-    .style(move |_: &Theme, status| {
-        let bg_color = palette.background.strong.color;
-        let bg = match status {
-            button::Status::Hovered | button::Status::Pressed => {
-                iced::Background::Color(Color {
-                    a: bg_color.a * 0.85,
-                    ..bg_color
-                })
+    let cancel_button = button(text("Cancel").size(13).color(fg).center())
+        .padding([6, 20])
+        .style(move |_: &Theme, status| {
+            let bg_color = palette.background.strong.color;
+            let bg = match status {
+                button::Status::Hovered | button::Status::Pressed => {
+                    iced::Background::Color(Color {
+                        a: bg_color.a * 0.85,
+                        ..bg_color
+                    })
+                }
+                _ => iced::Background::Color(bg_color),
+            };
+            let border = if cancel_focused {
+                Border {
+                    color: focus_color,
+                    width: 2.0,
+                    radius: 6.0.into(),
+                }
+            } else {
+                Border {
+                    radius: 6.0.into(),
+                    ..Border::default()
+                }
+            };
+            button::Style {
+                background: Some(bg),
+                text_color: fg,
+                border,
+                ..button::Style::default()
             }
-            _ => iced::Background::Color(bg_color),
-        };
-        let border = if cancel_focused {
-            Border {
-                color: focus_color,
-                width: 2.0,
-                radius: 6.0.into(),
-            }
-        } else {
-            Border {
-                radius: 6.0.into(),
-                ..Border::default()
-            }
-        };
-        button::Style {
-            background: Some(bg),
-            text_color: fg,
-            border,
-            ..button::Style::default()
-        }
-    })
-    .on_press(Message::CancelDiscard);
+        })
+        .on_press(Message::CancelDiscard);
 
     // File list preview (up to 10 files)
     let mut file_list = column![].spacing(2);

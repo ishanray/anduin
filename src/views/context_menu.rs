@@ -1,7 +1,7 @@
 use crate::app::{Message, State};
 use crate::{SIDEBAR_ROW_HEIGHT, lucide};
 use iced::mouse::Interaction;
-use iced::widget::{column, container, mouse_area, row, text, Space};
+use iced::widget::{Space, column, container, mouse_area, row, text};
 use iced::{Border, Color, Element, Fill, Shadow, Theme, Vector};
 
 /// Render the context menu overlay when right-clicking a sidebar item.
@@ -29,30 +29,27 @@ pub(crate) fn view_context_menu(state: &State) -> Element<'_, Message> {
     let menu_content = column![gitignore_item].spacing(0);
 
     // macOS-style menu card
-    let menu_card = container(
-        container(menu_content).padding([4, 0]),
-    )
-    .style(move |_: &Theme| {
-        container::Style::default()
-            .background(menu_bg)
-            .border(Border {
-                color: border_color,
-                width: 1.0,
-                radius: 8.0.into(),
-            })
-            .shadow(Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, 0.18),
-                offset: Vector::new(0.0, 4.0),
-                blur_radius: 16.0,
-            })
-    })
-    .width(220);
+    let menu_card = container(container(menu_content).padding([4, 0]))
+        .style(move |_: &Theme| {
+            container::Style::default()
+                .background(menu_bg)
+                .border(Border {
+                    color: border_color,
+                    width: 1.0,
+                    radius: 8.0.into(),
+                })
+                .shadow(Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.18),
+                    offset: Vector::new(0.0, 4.0),
+                    blur_radius: 16.0,
+                })
+        })
+        .width(220);
 
     // Position: 320px sidebar width, vertically aligned to the clicked row
     // Account for: header (48px) + rule (1px) + tab bar (~33px) + rule (1px) + padding (8px)
     let sidebar_header_height = 48.0 + 1.0 + 33.0 + 1.0 + 8.0;
-    let row_top = sidebar_header_height
-        + (menu.row_index as f32) * SIDEBAR_ROW_HEIGHT
+    let row_top = sidebar_header_height + (menu.row_index as f32) * SIDEBAR_ROW_HEIGHT
         - state.sidebar_scroll_offset;
 
     // Transparent backdrop to catch clicks and close the menu
@@ -93,12 +90,9 @@ fn menu_item<'a>(
 ) -> Element<'a, Message> {
     mouse_area(
         container(
-            row![
-                container(icon).width(20),
-                text(label).size(13).color(fg),
-            ]
-            .spacing(8)
-            .align_y(iced::Alignment::Center),
+            row![container(icon).width(20), text(label).size(13).color(fg),]
+                .spacing(8)
+                .align_y(iced::Alignment::Center),
         )
         .width(Fill)
         .padding([6, 12])

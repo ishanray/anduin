@@ -214,7 +214,11 @@ fn ensure_success(output: &Output, command: &str) -> Result<()> {
 /// Returns `(branches, current_branch)`.
 pub fn git_list_branches(repo_path: &Path) -> Result<(Vec<String>, String)> {
     let output = Command::new("git")
-        .args(["branch", "--sort=-committerdate", "--format=%(refname:short)"])
+        .args([
+            "branch",
+            "--sort=-committerdate",
+            "--format=%(refname:short)",
+        ])
         .current_dir(repo_path)
         .output()
         .context("failed to run git branch")?;
@@ -344,8 +348,7 @@ pub fn git_discard_paths(repo_path: &Path, paths: &[String]) -> Result<()> {
             if current == repo_path {
                 break;
             }
-            if current.is_dir() && fs::read_dir(&current).is_ok_and(|mut d| d.next().is_none())
-            {
+            if current.is_dir() && fs::read_dir(&current).is_ok_and(|mut d| d.next().is_none()) {
                 let _ = fs::remove_dir(&current);
             } else {
                 break;
@@ -422,12 +425,7 @@ pub fn git_commit_files(repo_path: &Path, sha: &str) -> Result<Vec<(char, String
 pub fn git_diff_commit_file(repo_path: &Path, sha: &str, file_path: &str) -> Result<String> {
     // Try normal parent..commit diff first
     let output = Command::new("git")
-        .args([
-            "diff",
-            &format!("{sha}^..{sha}"),
-            "--",
-            file_path,
-        ])
+        .args(["diff", &format!("{sha}^..{sha}"), "--", file_path])
         .current_dir(repo_path)
         .output()
         .context("failed to run git diff for commit file")?;

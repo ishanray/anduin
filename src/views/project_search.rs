@@ -26,9 +26,7 @@ pub(crate) fn view_search_content<'a>(
         container(
             column![
                 lucide::search().size(32).color(muted_fg),
-                text("Search across changed diffs")
-                    .size(16)
-                    .color(muted_fg),
+                text("Search across changed diffs").size(16).color(muted_fg),
             ]
             .spacing(12)
             .align_x(iced::Alignment::Center),
@@ -60,9 +58,7 @@ pub(crate) fn view_search_content<'a>(
         } else {
             container(
                 column![
-                    text("No matches in this file")
-                        .size(14)
-                        .color(muted_fg),
+                    text("No matches in this file").size(14).color(muted_fg),
                     text("Select a file with matches from the sidebar")
                         .size(12)
                         .font(MONO)

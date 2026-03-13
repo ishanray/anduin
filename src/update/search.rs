@@ -63,9 +63,7 @@ pub(crate) fn handle_project_search_results(
                         .project_search
                         .as_ref()
                         .and_then(|s| s.results.first())
-                        .and_then(|r| {
-                            state.files.iter().position(|f| f.path == r.file_path)
-                        })
+                        .and_then(|r| state.files.iter().position(|f| f.path == r.file_path))
                 })
                 .flatten()
             {
