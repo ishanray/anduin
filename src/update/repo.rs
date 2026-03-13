@@ -853,7 +853,8 @@ fn handle_history_keyboard_event(state: &mut State, event: &keyboard::Event) -> 
 
     match state.history_focus {
         HistoryFocus::CommitList => match key.as_ref() {
-            keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
+            keyboard::Key::Named(keyboard::key::Named::ArrowDown)
+            | keyboard::Key::Character("j") => {
                 let count = state.commits.len();
                 if count == 0 {
                     return Task::none();
@@ -868,7 +869,8 @@ fn handle_history_keyboard_event(state: &mut State, event: &keyboard::Event) -> 
                     Task::none()
                 }
             }
-            keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
+            keyboard::Key::Named(keyboard::key::Named::ArrowUp)
+            | keyboard::Key::Character("k") => {
                 let current = state.selected_commit.unwrap_or(0);
                 let next = current.saturating_sub(1);
                 if next != current {
@@ -888,7 +890,8 @@ fn handle_history_keyboard_event(state: &mut State, event: &keyboard::Event) -> 
             _ => Task::none(),
         },
         HistoryFocus::FileList => match key.as_ref() {
-            keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
+            keyboard::Key::Named(keyboard::key::Named::ArrowDown)
+            | keyboard::Key::Character("j") => {
                 let count = state.commit_files.len();
                 if count == 0 {
                     return Task::none();
@@ -901,7 +904,8 @@ fn handle_history_keyboard_event(state: &mut State, event: &keyboard::Event) -> 
                     Task::none()
                 }
             }
-            keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
+            keyboard::Key::Named(keyboard::key::Named::ArrowUp)
+            | keyboard::Key::Character("k") => {
                 let current = state.history_selected_file.unwrap_or(0);
                 let next = current.saturating_sub(1);
                 if next != current {
@@ -937,10 +941,20 @@ fn handle_file_list_keyboard_event(state: &mut State, event: &keyboard::Event) -
         {
             navigate_visible_rows(state, -1, modifiers.shift())
         }
+        keyboard::Key::Character(c)
+            if no_shortcut_modifiers(*modifiers) && c.eq_ignore_ascii_case("k") =>
+        {
+            navigate_visible_rows(state, -1, false)
+        }
         keyboard::Key::Named(keyboard::key::Named::ArrowDown)
             if modifiers_without_shift(*modifiers) =>
         {
             navigate_visible_rows(state, 1, modifiers.shift())
+        }
+        keyboard::Key::Character(c)
+            if no_shortcut_modifiers(*modifiers) && c.eq_ignore_ascii_case("j") =>
+        {
+            navigate_visible_rows(state, 1, false)
         }
         keyboard::Key::Named(keyboard::key::Named::ArrowLeft) if modifiers_alt_only(*modifiers) => {
             collapse_focused_row(state, true)
