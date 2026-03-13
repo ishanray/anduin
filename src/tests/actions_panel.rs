@@ -1,7 +1,7 @@
 use crate::app::{
     ActivePane, ChangesFocus, Commit, HistoryFocus, Message, SidebarTab, State, ThemeMode,
 };
-use crate::git::diff::FileDiff;
+use crate::git::diff::{ChangedFile, FileDiff, FileStatus};
 use crate::update;
 use iced::keyboard;
 use iced::widget::Id;
@@ -252,6 +252,12 @@ fn actions_panel_c_opens_commit_composer_and_closes_panel() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
     state.show_actions_panel = true;
+    state.files = vec![ChangedFile {
+        path: "src/main.rs".to_owned(),
+        status: FileStatus::Modified,
+        staged: true,
+        unstaged: false,
+    }];
 
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("c".into())));
 
@@ -264,6 +270,12 @@ fn commit_composer_t_does_not_switch_tabs_after_opening_from_actions() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
     state.show_actions_panel = true;
+    state.files = vec![ChangedFile {
+        path: "src/main.rs".to_owned(),
+        status: FileStatus::Modified,
+        staged: true,
+        unstaged: false,
+    }];
 
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("c".into())));
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("t".into())));

@@ -5,6 +5,9 @@ use crate::actions::{
     maybe_run_project_search, scroll_commit_list_to_selected, scroll_sidebar_to_selected,
     stage_all_files, stage_files, switch_branch, unstage_all_files, unstage_files,
 };
+use crate::actions_ui::{
+    ActionsSurfaceCommand, actions_panel_command_for_key, is_actions_panel_command_key,
+};
 use crate::app::{
     ActivePane, BranchPicker, ChangesFocus, CommitComposer, DiscardButton, DiscardConfirm,
     HistoryFocus, Message, ProjectPicker, ProjectSearch, SidebarTab, SidebarTarget, State,
@@ -1305,54 +1308,35 @@ fn handle_actions_panel_key_event(
         return None;
     }
 
-    let task = match key.as_ref() {
-        keyboard::Key::Character("o") | keyboard::Key::Character("O") => {
-            state.show_actions_panel = false;
-            update(state, Message::OpenRepo)
-        }
-        keyboard::Key::Character("b") | keyboard::Key::Character("B") => {
-            state.show_actions_panel = false;
-            update(state, Message::OpenBranchPicker)
-        }
-        keyboard::Key::Character("p") | keyboard::Key::Character("P") => {
-            state.show_actions_panel = false;
-            update(state, Message::OpenProjectPicker)
-        }
-        keyboard::Key::Character("f") | keyboard::Key::Character("F") => {
-            state.show_actions_panel = false;
-            update(state, Message::OpenProjectSearch)
-        }
-        keyboard::Key::Character("c") | keyboard::Key::Character("C") => {
-            if state.staged_file_count() == 0 {
-                return Some(Task::none());
-            }
-            state.show_actions_panel = false;
-            update(state, Message::OpenCommitComposer)
-        }
-        keyboard::Key::Character("/") => {
-            state.show_actions_panel = false;
-            open_diff_search(state)
-        }
-        keyboard::Key::Character("h") | keyboard::Key::Character("H")
-            if state.sidebar_tab == SidebarTab::Changes =>
-        {
-            state.show_actions_panel = false;
+    let keyboard::Key::Character(key) = key.as_ref() else {
+        return None;
+    };
+
+    let Some(command) = actions_panel_command_for_key(state, key) else {
+        return is_actions_panel_command_key(key).then_some(Task::none());
+    };
+
+    state.show_actions_panel = false;
+
+    let task = match command {
+        ActionsSurfaceCommand::OpenRepo => update(state, Message::OpenRepo),
+        ActionsSurfaceCommand::OpenBranchPicker => update(state, Message::OpenBranchPicker),
+        ActionsSurfaceCommand::OpenProjectPicker => update(state, Message::OpenProjectPicker),
+        ActionsSurfaceCommand::OpenProjectSearch => update(state, Message::OpenProjectSearch),
+        ActionsSurfaceCommand::OpenCommitComposer => update(state, Message::OpenCommitComposer),
+        ActionsSurfaceCommand::SearchDiff => open_diff_search(state),
+        ActionsSurfaceCommand::SwitchToHistoryTab => {
             update(state, Message::SwitchSidebarTab(SidebarTab::History))
         }
-        keyboard::Key::Character("t") | keyboard::Key::Character("T")
-            if state.sidebar_tab == SidebarTab::History =>
-        {
-            state.show_actions_panel = false;
+        ActionsSurfaceCommand::SwitchToChangesTab => {
             update(state, Message::SwitchSidebarTab(SidebarTab::Changes))
         }
-        keyboard::Key::Character("y") | keyboard::Key::Character("Y") => {
+        ActionsSurfaceCommand::CopyCommitHash => {
             let Some(commit) = state.history_commit_header.as_ref() else {
                 return Some(Task::none());
             };
-            state.show_actions_panel = false;
             update(state, Message::CopyCommitHash(commit.hash.clone()))
         }
-        _ => return None,
     };
 
     Some(task)

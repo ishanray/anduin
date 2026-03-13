@@ -1,4 +1,7 @@
 use crate::MONO;
+use crate::actions_ui::{
+    ActionsSurfaceCommand, available_actions_panel_commands, history_enter_label,
+};
 use crate::app::{HistoryFocus, Message, SidebarTab, SidebarTarget, State};
 use iced::theme::palette::Extended;
 use iced::widget::{Space, column, container, row, text};
@@ -95,13 +98,14 @@ fn display_target(state: &State) -> String {
 
 pub(crate) fn build_footer_model(state: &State) -> FooterModel {
     if state.current_branch.is_none() && state.files.is_empty() && state.commits.is_empty() {
+        let command_actions = available_actions_panel_commands(state);
         return FooterModel {
             target_label: "no repository".to_owned(),
             mode_label: "current: none".to_owned(),
             preview_actions: vec![action(".", "Actions"), action("o", "Open repo")],
             sections: vec![section(
                 "Start",
-                vec![action("o", "Open repository"), action("p", "Switch project")],
+                command_actions.into_iter().map(action_from_command).collect(),
             )],
         };
     }
@@ -110,6 +114,30 @@ pub(crate) fn build_footer_model(state: &State) -> FooterModel {
         SidebarTab::Changes => build_changes_model(state),
         SidebarTab::History => build_history_model(state),
     }
+}
+
+fn action_from_command(command: ActionsSurfaceCommand) -> FooterAction {
+    action(command.key(), command.label())
+}
+
+fn command_actions_for_section(
+    commands: &[ActionsSurfaceCommand],
+    title: &str,
+) -> Vec<FooterAction> {
+    commands
+        .iter()
+        .copied()
+        .filter(|command| command.section() == title)
+        .map(action_from_command)
+        .collect()
+}
+
+fn section_commands(
+    commands: &[ActionsSurfaceCommand],
+    title: &str,
+) -> Option<FooterSection> {
+    let actions = command_actions_for_section(commands, title);
+    (!actions.is_empty()).then(|| section(title, actions))
 }
 
 fn build_changes_model(state: &State) -> FooterModel {
@@ -142,6 +170,8 @@ fn build_changes_model(state: &State) -> FooterModel {
         vec![action(".", "Actions")]
     };
 
+    let command_actions = available_actions_panel_commands(state);
+
     let sections = vec![
         section_opt(
             "Files",
@@ -152,22 +182,9 @@ fn build_changes_model(state: &State) -> FooterModel {
                 maybe_action("k", "Discard", has_changes),
             ],
         ),
-        section_opt(
-            "Commit",
-            vec![maybe_action("c", "Commit staged changes", has_staged)],
-        ),
-        section_opt(
-            "Repo",
-            vec![Some(action("b", "Switch branch")), Some(action("p", "Switch project"))],
-        ),
-        section_opt(
-            "Search & View",
-            vec![
-                maybe_action("/", "Search diff", has_diff),
-                Some(action("f", "Project search")),
-                Some(action("h", "Open history tab")),
-            ],
-        ),
+        section_commands(&command_actions, "Commit"),
+        section_commands(&command_actions, "Repo"),
+        section_commands(&command_actions, "Search & View"),
         section_opt(
             "Navigation",
             vec![
@@ -194,46 +211,23 @@ fn build_history_model(state: &State) -> FooterModel {
     let mode_label = "current: history".to_owned();
     let has_commit = state.history_commit_header.is_some();
     let has_file = state.history_selected_path.is_some();
-    let diff_ready = state.history_diff.is_some();
 
     let preview_actions = vec![action(".", "Actions")];
 
-    let nav_label = match state.history_focus {
-        HistoryFocus::CommitList => "Focus file list",
-        HistoryFocus::FileList => "Focus diff",
-        HistoryFocus::DiffView => "Back to file list",
-    };
-
     let history_move_enabled = has_commit || has_file;
-    let enter_enabled = match state.history_focus {
-        HistoryFocus::CommitList => state.selected_commit.is_some() && !state.commit_files.is_empty(),
-        HistoryFocus::FileList => diff_ready,
-        HistoryFocus::DiffView => false,
-    };
+    let command_actions = available_actions_panel_commands(state);
 
     let sections = vec![
         section_opt(
             "History",
             vec![
                 maybe_action("↑↓", "Move history selection", history_move_enabled),
-                maybe_action("enter", nav_label, enter_enabled),
+                history_enter_label(state).map(|label| action("enter", label)),
             ],
         ),
-        section_opt(
-            "Commit",
-            vec![maybe_action("y", "Copy commit hash", has_commit)],
-        ),
-        section_opt(
-            "View",
-            vec![
-                maybe_action("/", "Search diff", diff_ready),
-                Some(action("t", "Switch to changes tab")),
-            ],
-        ),
-        section_opt(
-            "Repo",
-            vec![Some(action("b", "Switch branch")), Some(action("p", "Switch project"))],
-        ),
+        section_commands(&command_actions, "Commit"),
+        section_commands(&command_actions, "Search & View"),
+        section_commands(&command_actions, "Repo"),
     ]
     .into_iter()
     .flatten()
@@ -551,11 +545,10 @@ mod tests {
 
         let model = build_footer_model(&state);
 
-        let history_section = model
-            .sections
-            .iter()
-            .find(|section| section.title == "History")
-            .expect("history section present");
+        let history_section = match model.sections.iter().find(|section| section.title == "History") {
+            Some(section) => section,
+            None => panic!("history section present"),
+        };
         assert!(history_section
             .actions
             .iter()

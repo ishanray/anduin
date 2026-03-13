@@ -4,6 +4,7 @@
 )]
 
 mod actions;
+mod actions_ui;
 mod app;
 mod config;
 mod git;
