@@ -433,13 +433,10 @@ pub(crate) fn handle_git_operation_finished(
 ) -> Task<Message> {
     match result {
         Ok(message) => {
-            state.set_status_message(message, StatusTone::Success);
-            state.queue_refresh()
+            let clear = state.set_status_message(message, StatusTone::Success);
+            Task::batch([state.queue_refresh(), clear])
         }
-        Err(error) => {
-            state.set_status_message(error, StatusTone::Error);
-            Task::none()
-        }
+        Err(error) => state.set_status_message(error, StatusTone::Error),
     }
 }
 
@@ -450,8 +447,8 @@ pub(crate) fn handle_commit_finished(
     match result {
         Ok(message) => {
             state.commit_composer = None;
-            state.set_status_message(message, StatusTone::Success);
-            state.queue_refresh()
+            let clear = state.set_status_message(message, StatusTone::Success);
+            Task::batch([state.queue_refresh(), clear])
         }
         Err(error) => {
             if let Some(composer) = state.commit_composer.as_mut() {
@@ -492,10 +489,7 @@ pub(crate) fn handle_branches_fetched(
             state.branch_picker = Some(picker);
             focus(input_id)
         }
-        Err(error) => {
-            state.set_status_message(error, StatusTone::Error);
-            Task::none()
-        }
+        Err(error) => state.set_status_message(error, StatusTone::Error),
     }
 }
 
@@ -596,7 +590,7 @@ pub(crate) fn handle_branch_switched(
 
             state.branch_picker = None;
             state.current_branch = Some(branch_name.clone());
-            state.set_status_message(format!("Switched to {branch_name}"), StatusTone::Success);
+            let clear = state.set_status_message(format!("Switched to {branch_name}"), StatusTone::Success);
 
             state.files.clear();
             state.selected_file = None;
@@ -618,7 +612,7 @@ pub(crate) fn handle_branch_switched(
             state.history_commit_header = None;
             state.history_focus = HistoryFocus::CommitList;
 
-            state.queue_refresh()
+            Task::batch([state.queue_refresh(), clear])
         }
         Err(error) => {
             if let Some(picker) = state.branch_picker.as_mut() {
@@ -652,7 +646,7 @@ pub(crate) fn handle_branch_created(
 
             state.branch_picker = None;
             state.current_branch = Some(branch_name.clone());
-            state.set_status_message(
+            let clear = state.set_status_message(
                 format!("Created and switched to {branch_name}"),
                 StatusTone::Success,
             );
@@ -676,7 +670,7 @@ pub(crate) fn handle_branch_created(
             state.history_commit_header = None;
             state.history_focus = HistoryFocus::CommitList;
 
-            state.queue_refresh()
+            Task::batch([state.queue_refresh(), clear])
         }
         Err(error) => {
             if let Some(picker) = state.branch_picker.as_mut() {

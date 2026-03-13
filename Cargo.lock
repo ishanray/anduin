@@ -111,6 +111,7 @@ dependencies = [
  "notify",
  "rfd",
  "serde",
+ "tokio",
  "toml",
  "unidiff",
 ]

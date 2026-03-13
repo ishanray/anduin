@@ -29,6 +29,7 @@ fn test_state(files: Vec<ChangedFile>) -> State {
         theme_mode,
         error: None,
         status_message: None,
+        status_message_id: 0,
         commit_composer: None,
         expanded_dirs: HashSet::new(),
         tree_root_expanded: true,

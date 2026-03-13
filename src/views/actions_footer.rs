@@ -2,7 +2,7 @@ use crate::MONO;
 use crate::actions_ui::{
     ActionsSurfaceCommand, available_actions_panel_commands, history_enter_label,
 };
-use crate::app::{HistoryFocus, Message, SidebarTab, SidebarTarget, State};
+use crate::app::{HistoryFocus, Message, SidebarTab, SidebarTarget, State, StatusTone};
 use iced::theme::palette::Extended;
 use iced::widget::{Space, column, container, row, text};
 use iced::{Border, Element, Fill, Font, Theme};
@@ -299,13 +299,28 @@ pub(crate) fn view_actions_footer(state: &State) -> Element<'_, Message> {
         preview = preview.push(action_chip(item, palette));
     }
 
-    let closed = row![
-        preview.align_y(iced::Alignment::Center),
-        Space::new().width(Fill),
+    let right_label: Element<'_, Message> = if let Some(status) = state.status_message.as_ref() {
+        let color = match status.tone {
+            StatusTone::Success => palette.success.base.color,
+            StatusTone::Error => palette.danger.base.color,
+        };
+        text(status.text.as_str())
+            .size(12)
+            .font(MONO)
+            .color(color)
+            .into()
+    } else {
         text(model.mode_label.clone())
             .size(12)
             .font(MONO)
-            .color(subtle_fg),
+            .color(subtle_fg)
+            .into()
+    };
+
+    let closed = row![
+        preview.align_y(iced::Alignment::Center),
+        Space::new().width(Fill),
+        right_label,
     ]
     .align_y(iced::Alignment::Center);
 
@@ -388,6 +403,7 @@ mod tests {
             theme_mode,
             error: None,
             status_message: None,
+            status_message_id: 0,
             commit_composer: None,
             expanded_dirs: HashSet::new(),
             tree_root_expanded: true,

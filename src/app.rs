@@ -104,6 +104,7 @@ pub(crate) struct State {
     pub(crate) theme_mode: ThemeMode,
     pub(crate) error: Option<String>,
     pub(crate) status_message: Option<StatusMessage>,
+    pub(crate) status_message_id: u64,
     pub(crate) commit_composer: Option<CommitComposer>,
     pub(crate) expanded_dirs: HashSet<String>,
     pub(crate) tree_root_expanded: bool,
@@ -277,6 +278,7 @@ pub(crate) enum Message {
     CloseContextMenu,
     AddToGitignore(String),
     GitignoreFinished(Result<String, String>),
+    ClearStatus(u64),
 }
 
 impl ThemeMode {
@@ -745,11 +747,26 @@ impl State {
         self.are_all_paths_staged(&paths)
     }
 
-    pub(crate) fn set_status_message(&mut self, text: impl Into<String>, tone: StatusTone) {
+    pub(crate) fn set_status_message(
+        &mut self,
+        text: impl Into<String>,
+        tone: StatusTone,
+    ) -> Task<Message> {
+        self.status_message_id = self.status_message_id.wrapping_add(1);
+        let id = self.status_message_id;
         self.status_message = Some(StatusMessage {
             text: text.into(),
             tone,
         });
+        use std::time::Duration;
+        use tokio::time::sleep;
+        Task::perform(
+            async move {
+                sleep(Duration::from_secs(5)).await;
+                id
+            },
+            Message::ClearStatus,
+        )
     }
 
     fn tree_root_name(&self) -> String {

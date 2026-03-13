@@ -64,7 +64,7 @@ pub(crate) fn handle_commits_loaded(
             }
         }
         Err(error) => {
-            state.set_status_message(error, StatusTone::Error);
+            return state.set_status_message(error, StatusTone::Error);
         }
     }
     Task::none()
@@ -103,7 +103,7 @@ pub(crate) fn handle_commit_files_loaded(
             }
         }
         Err(error) => {
-            state.set_status_message(error, StatusTone::Error);
+            return state.set_status_message(error, StatusTone::Error);
         }
     }
     Task::none()
@@ -154,10 +154,7 @@ pub(crate) fn handle_history_diff_loaded(
             state.history_diff = Some(diff);
             task
         }
-        Err(error) => {
-            state.set_status_message(error, StatusTone::Error);
-            Task::none()
-        }
+        Err(error) => state.set_status_message(error, StatusTone::Error),
     }
 }
 

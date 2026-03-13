@@ -1,8 +1,7 @@
-use crate::app::{HistoryFocus, Message, SidebarTab, State, StatusTone};
+use crate::app::{HistoryFocus, Message, SidebarTab, State};
 use crate::git::diff::FileStatus;
 use crate::tree::SidebarRow;
 use crate::{MONO, PANEL_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT, TREE_INDENT, lucide};
-use iced::theme::palette::Extended;
 use iced::widget::text::Wrapping;
 use iced::widget::{
     Space, Stack, button, column, container, mouse_area, row, rule, scrollable, text, text_input,
@@ -406,16 +405,9 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                 selected_suffix
             );
 
-            let mut footer_content =
-                column![text(summary).size(12).font(MONO).color(fg)].spacing(6);
-
-            if let Some(status) = state.status_message.as_ref() {
-                let color = status_color(palette, status.tone);
-                footer_content = footer_content
-                    .push(text(status.text.as_str()).size(12).font(MONO).color(color));
-            }
-
-            container(footer_content).padding([10, 14]).into()
+            container(text(summary).size(12).font(MONO).color(fg))
+                .padding([10, 14])
+                .into()
         }
         SidebarTab::History => {
             let count = state.commits.len();
@@ -795,13 +787,6 @@ fn view_project_picker(state: &State) -> Element<'_, Message> {
                 })
         })
         .into()
-}
-
-fn status_color(palette: &Extended, tone: StatusTone) -> iced::Color {
-    match tone {
-        StatusTone::Success => palette.success.base.color,
-        StatusTone::Error => palette.danger.base.color,
-    }
 }
 
 pub(crate) fn selected_sidebar_row_bounds(state: &State) -> Option<(f32, f32)> {

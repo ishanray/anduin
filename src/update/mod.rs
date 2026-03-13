@@ -123,8 +123,8 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
             history::handle_history_diff_loaded(state, request_id, result)
         }
         Message::CopyCommitHash(hash) => {
-            state.set_status_message("Copied commit hash", StatusTone::Success);
-            clipboard::write(hash).discard()
+            let clear = state.set_status_message("Copied commit hash", StatusTone::Success);
+            Task::batch([clipboard::write(hash).discard(), clear])
         }
         Message::RequestDiscard => repo::handle_request_discard(state),
         Message::ConfirmDiscard => repo::handle_confirm_discard(state),
@@ -192,10 +192,13 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
                 Message::GitignoreFinished,
             )
         }
-        Message::GitignoreFinished(result) => {
-            match result {
-                Ok(msg) => state.set_status_message(msg, StatusTone::Success),
-                Err(msg) => state.set_status_message(msg, StatusTone::Error),
+        Message::GitignoreFinished(result) => match result {
+            Ok(msg) => state.set_status_message(msg, StatusTone::Success),
+            Err(msg) => state.set_status_message(msg, StatusTone::Error),
+        },
+        Message::ClearStatus(id) => {
+            if state.status_message_id == id {
+                state.status_message = None;
             }
             Task::none()
         }
