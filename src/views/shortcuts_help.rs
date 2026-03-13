@@ -147,7 +147,7 @@ pub(crate) fn view_shortcuts_help(state: &State) -> Element<'_, Message> {
             .height(Fill)
             .style(move |_: &Theme| container::Style::default().background(backdrop_color)),
     )
-    .on_press(Message::ToggleShortcutsHelp);
+    .on_press(Message::ToggleActionsPanel);
 
     backdrop.into()
 }

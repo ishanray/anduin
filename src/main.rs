@@ -169,7 +169,7 @@ fn boot() -> (State, Task<Message>) {
         sidebar_viewport_height: 0.0,
         active_pane: ActivePane::Sidebar,
         cached_theme,
-        show_shortcuts_help: false,
+        show_actions_panel: false,
         current_branch: None,
         branch_picker: None,
         project_picker: None,
@@ -278,7 +278,7 @@ fn view(state: &State) -> Element<'_, Message> {
             .width(Fill)
             .height(Fill)
             .into()
-    } else if state.show_shortcuts_help {
+    } else if state.show_actions_panel {
         let overlay = view_shortcuts_help(state);
         Stack::new()
             .push(main_content)

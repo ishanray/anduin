@@ -86,8 +86,8 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ProjectSearchJumpTo(file_path, line_number) => {
             search::handle_project_search_jump_to(state, file_path, line_number)
         }
-        Message::ToggleShortcutsHelp => {
-            state.show_shortcuts_help = !state.show_shortcuts_help;
+        Message::ToggleActionsPanel => {
+            state.show_actions_panel = !state.show_actions_panel;
             Task::none()
         }
         Message::OpenBranchPicker => repo::handle_open_branch_picker(state),

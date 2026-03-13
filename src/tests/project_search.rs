@@ -48,7 +48,7 @@ fn test_state(files: Vec<ChangedFile>) -> State {
         sidebar_viewport_height: 0.0,
         active_pane: ActivePane::Sidebar,
         cached_theme: theme_mode.app_theme(),
-        show_shortcuts_help: false,
+        show_actions_panel: false,
         current_branch: None,
         branch_picker: None,
         project_picker: None,

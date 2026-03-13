@@ -131,6 +131,7 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
     state.branch_picker = None;
     state.project_picker = None;
     state.pending_diff_jump = None;
+    state.show_actions_panel = false;
     state.discard_confirm = None;
     state.sidebar_scroll_offset = 0.0;
     state.sidebar_viewport_height = 0.0;
@@ -211,19 +212,19 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
     } = &event
     {
         if matches!(modified_key.as_ref(), keyboard::Key::Character("?")) {
-            return update(state, Message::ToggleShortcutsHelp);
+            return update(state, Message::ToggleActionsPanel);
         }
-        if state.show_shortcuts_help {
+        if state.show_actions_panel {
             if matches!(
                 key.as_ref(),
                 keyboard::Key::Named(keyboard::key::Named::Escape)
             ) {
-                state.show_shortcuts_help = false;
+                state.show_actions_panel = false;
             }
             return Task::none();
         }
     }
-    if state.show_shortcuts_help {
+    if state.show_actions_panel {
         return Task::none();
     }
 
