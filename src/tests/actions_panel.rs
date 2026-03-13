@@ -1,10 +1,35 @@
-use crate::app::{ActivePane, ChangesFocus, HistoryFocus, Message, SidebarTab, State, ThemeMode};
+use crate::app::{
+    ActivePane, ChangesFocus, Commit, HistoryFocus, Message, SidebarTab, State, ThemeMode,
+};
+use crate::git::diff::FileDiff;
 use crate::update;
 use iced::keyboard;
 use iced::widget::Id;
 use iced_code_editor::CodeEditor;
 use std::collections::{HashMap, HashSet};
 use std::env;
+
+fn key_event(key: keyboard::Key) -> Message {
+    Message::KeyboardEvent(keyboard::Event::KeyPressed {
+        key: key.clone(),
+        modified_key: key,
+        physical_key: keyboard::key::Physical::Unidentified(keyboard::key::NativeCode::Unidentified),
+        location: keyboard::Location::Standard,
+        modifiers: keyboard::Modifiers::default(),
+        text: None,
+        repeat: false,
+    })
+}
+
+fn sample_commit() -> Commit {
+    Commit {
+        hash: "abc1234deadbeef".to_owned(),
+        short_hash: "abc1234".to_owned(),
+        author: "Test User".to_owned(),
+        date: "2026-03-12".to_owned(),
+        message: "Test commit".to_owned(),
+    }
+}
 
 fn test_state() -> State {
     let theme_mode = ThemeMode::Dark;
@@ -114,4 +139,135 @@ fn escape_closes_actions_panel_before_other_navigation() {
     );
 
     assert!(!state.show_actions_panel);
+}
+
+#[test]
+fn actions_panel_b_starts_opening_branch_picker() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+
+    let task = update::update(&mut state, key_event(keyboard::Key::Character("b".into())));
+
+    assert!(task.units() > 0);
+}
+
+#[test]
+fn actions_panel_p_opens_project_picker() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("p".into())));
+
+    assert!(state.project_picker.is_some());
+}
+
+#[test]
+fn actions_panel_h_switches_to_history_tab() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("h".into())));
+
+    assert_eq!(state.sidebar_tab, SidebarTab::History);
+}
+
+#[test]
+fn actions_panel_y_copies_hash_from_history_context() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+    state.sidebar_tab = SidebarTab::History;
+    state.history_commit_header = Some(sample_commit());
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("y".into())));
+
+    assert_eq!(
+        state.status_message.as_ref().map(|message| message.text.as_str()),
+        Some("Copied commit hash")
+    );
+}
+
+#[test]
+fn actions_panel_f_opens_project_search() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("f".into())));
+
+    assert!(state.project_search.is_some());
+}
+
+#[test]
+fn actions_panel_o_starts_open_repo_flow_without_repo() {
+    let mut state = test_state();
+    state.show_actions_panel = true;
+
+    let task = update::update(&mut state, key_event(keyboard::Key::Character("o".into())));
+
+    assert!(task.units() > 0);
+}
+
+#[test]
+fn actions_panel_slash_opens_diff_search_in_changes() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+    state.current_diff = Some(FileDiff {
+        path: "src/main.rs".to_owned(),
+        raw_patch: "@@ -1 +1 @@\n-old\n+new\n".to_owned(),
+    });
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("/".into())));
+
+    assert!(!state.show_actions_panel);
+    assert_eq!(state.changes_focus, ChangesFocus::DiffView);
+    assert!(state.diff_editor.is_search_open());
+}
+
+#[test]
+fn actions_panel_slash_opens_diff_search_in_history() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+    state.sidebar_tab = SidebarTab::History;
+    state.history_focus = HistoryFocus::FileList;
+    state.history_diff = Some(FileDiff {
+        path: "src/main.rs".to_owned(),
+        raw_patch: "@@ -1 +1 @@\n-old\n+new\n".to_owned(),
+    });
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("/".into())));
+
+    assert!(!state.show_actions_panel);
+    assert_eq!(state.history_focus, HistoryFocus::DiffView);
+    assert!(state.diff_editor.is_search_open());
+}
+
+#[test]
+fn actions_panel_c_opens_commit_composer_and_closes_panel() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("c".into())));
+
+    assert!(state.commit_composer.is_some());
+    assert!(!state.show_actions_panel);
+}
+
+#[test]
+fn commit_composer_t_does_not_switch_tabs_after_opening_from_actions() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("c".into())));
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("t".into())));
+
+    assert_eq!(state.sidebar_tab, SidebarTab::Changes);
+    assert!(state.commit_composer.is_some());
 }

@@ -211,16 +211,9 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
     }
 
     if state.show_actions_panel
-        && matches!(
-            &event,
-            keyboard::Event::KeyPressed {
-                key: keyboard::Key::Named(keyboard::key::Named::Escape),
-                ..
-            }
-        )
+        && let Some(task) = handle_actions_panel_key_event(state, &event)
     {
-        state.show_actions_panel = false;
-        return Task::none();
+        return task;
     }
 
     // Close context menu on any keypress
@@ -251,17 +244,7 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
 
     match shortcut_action_for_event(current_shortcut_platform(), &event) {
         Some(ShortcutAction::OpenProject) => update(state, Message::OpenProjectSearch),
-        Some(ShortcutAction::OpenDiff) => {
-            state.active_pane = ActivePane::Diff;
-            if state.sidebar_tab == SidebarTab::Changes {
-                state.changes_focus = ChangesFocus::DiffView;
-            }
-            state.diff_editor.gain_focus();
-            state
-                .diff_editor
-                .update(&EditorMessage::OpenSearch)
-                .map(Message::DiffEditor)
-        }
+        Some(ShortcutAction::OpenDiff) => open_diff_search(state),
         Some(ShortcutAction::OpenBranchPicker) => update(state, Message::OpenBranchPicker),
         Some(ShortcutAction::OpenProjectPicker) => update(state, Message::OpenProjectPicker),
         Some(ShortcutAction::ToggleActionsPanel) => update(state, Message::ToggleActionsPanel),
@@ -1300,6 +1283,99 @@ fn parent_dir_target(path: &str) -> Option<SidebarTarget> {
 fn file_parent_target(path: &str) -> Option<SidebarTarget> {
     path.rsplit_once('/')
         .map(|(parent, _)| SidebarTarget::Dir(parent.to_owned()))
+}
+
+fn handle_actions_panel_key_event(
+    state: &mut State,
+    event: &keyboard::Event,
+) -> Option<Task<Message>> {
+    let keyboard::Event::KeyPressed { key, modifiers, .. } = event else {
+        return None;
+    };
+
+    if matches!(
+        key.as_ref(),
+        keyboard::Key::Named(keyboard::key::Named::Escape)
+    ) {
+        state.show_actions_panel = false;
+        return Some(Task::none());
+    }
+
+    if !no_shortcut_modifiers(*modifiers) {
+        return None;
+    }
+
+    let task = match key.as_ref() {
+        keyboard::Key::Character("o") | keyboard::Key::Character("O") => {
+            state.show_actions_panel = false;
+            update(state, Message::OpenRepo)
+        }
+        keyboard::Key::Character("b") | keyboard::Key::Character("B") => {
+            state.show_actions_panel = false;
+            update(state, Message::OpenBranchPicker)
+        }
+        keyboard::Key::Character("p") | keyboard::Key::Character("P") => {
+            state.show_actions_panel = false;
+            update(state, Message::OpenProjectPicker)
+        }
+        keyboard::Key::Character("f") | keyboard::Key::Character("F") => {
+            state.show_actions_panel = false;
+            update(state, Message::OpenProjectSearch)
+        }
+        keyboard::Key::Character("c") | keyboard::Key::Character("C") => {
+            state.show_actions_panel = false;
+            update(state, Message::OpenCommitComposer)
+        }
+        keyboard::Key::Character("/") => {
+            state.show_actions_panel = false;
+            open_diff_search(state)
+        }
+        keyboard::Key::Character("h")
+        | keyboard::Key::Character("H")
+        | keyboard::Key::Character("t")
+        | keyboard::Key::Character("T") => {
+            state.show_actions_panel = false;
+            let target = match state.sidebar_tab {
+                SidebarTab::Changes => SidebarTab::History,
+                SidebarTab::History => SidebarTab::Changes,
+            };
+            update(state, Message::SwitchSidebarTab(target))
+        }
+        keyboard::Key::Character("y") | keyboard::Key::Character("Y") => {
+            let Some(commit) = state.history_commit_header.as_ref() else {
+                return Some(Task::none());
+            };
+            state.show_actions_panel = false;
+            update(state, Message::CopyCommitHash(commit.hash.clone()))
+        }
+        _ => return None,
+    };
+
+    Some(task)
+}
+
+fn open_diff_search(state: &mut State) -> Task<Message> {
+    let has_diff = if state.sidebar_tab == SidebarTab::History {
+        state.history_diff.is_some()
+    } else {
+        state.current_diff.is_some()
+    };
+
+    if !has_diff {
+        return Task::none();
+    }
+
+    state.active_pane = ActivePane::Diff;
+    if state.sidebar_tab == SidebarTab::History {
+        state.history_focus = HistoryFocus::DiffView;
+    } else {
+        state.changes_focus = ChangesFocus::DiffView;
+    }
+    state.diff_editor.gain_focus();
+    state
+        .diff_editor
+        .update(&EditorMessage::OpenSearch)
+        .map(Message::DiffEditor)
 }
 
 fn modifiers_without_shift(modifiers: keyboard::Modifiers) -> bool {

@@ -25,12 +25,16 @@ pub(crate) struct FooterModel {
     pub(crate) sections: Vec<FooterSection>,
 }
 
-fn action(key: &str, label: &str, enabled: bool) -> FooterAction {
+fn action(key: &str, label: &str) -> FooterAction {
     FooterAction {
         key: key.to_owned(),
         label: label.to_owned(),
-        enabled,
+        enabled: true,
     }
+}
+
+fn maybe_action(key: &str, label: &str, enabled: bool) -> Option<FooterAction> {
+    enabled.then(|| action(key, label))
 }
 
 fn section(title: &str, actions: Vec<FooterAction>) -> FooterSection {
@@ -38,6 +42,11 @@ fn section(title: &str, actions: Vec<FooterAction>) -> FooterSection {
         title: title.to_owned(),
         actions,
     }
+}
+
+fn section_opt(title: &str, actions: Vec<Option<FooterAction>>) -> Option<FooterSection> {
+    let actions: Vec<_> = actions.into_iter().flatten().collect();
+    (!actions.is_empty()).then(|| section(title, actions))
 }
 
 fn display_target(state: &State) -> String {
@@ -89,21 +98,11 @@ pub(crate) fn build_footer_model(state: &State) -> FooterModel {
         return FooterModel {
             target_label: "no repository".to_owned(),
             mode_label: "current: none".to_owned(),
-            preview_actions: vec![
-                action(".", "Actions", true),
-                action("o", "Open repo", true),
-                action("p", "Recent projects", true),
-            ],
-            sections: vec![
-                section(
-                    "Start",
-                    vec![
-                        action("o", "Open repository", true),
-                        action("p", "Switch recent project", true),
-                    ],
-                ),
-                section("Appearance", vec![action("t", "Toggle theme", true)]),
-            ],
+            preview_actions: vec![action(".", "Actions"), action("o", "Open repo")],
+            sections: vec![section(
+                "Start",
+                vec![action("o", "Open repository"), action("p", "Switch project")],
+            )],
         };
     }
 
@@ -128,59 +127,59 @@ fn build_changes_model(state: &State) -> FooterModel {
     let has_unstaged = state.unstaged_file_count() > 0;
     let has_staged = state.staged_file_count() > 0;
     let has_changes = !state.files.is_empty();
+    let has_diff = state.current_diff.is_some();
 
     let preview_actions = if has_changes {
-        vec![
-            action(".", "Actions", true),
-            action("space", "Stage", has_unstaged || has_staged),
-            action("c", "Commit", has_staged),
-        ]
+        let mut actions = vec![action(".", "Actions")];
+        if has_unstaged || has_staged {
+            actions.push(action("space", "Stage"));
+        }
+        if has_staged {
+            actions.push(action("c", "Commit"));
+        }
+        actions
     } else {
-        vec![
-            action(".", "Actions", true),
-            action("b", "Branch", true),
-            action("p", "Project", true),
-        ]
+        vec![action(".", "Actions")]
     };
 
     let sections = vec![
-        section(
+        section_opt(
             "Files",
             vec![
-                action("space", "Stage / Unstage", has_changes),
-                action("a", "Stage all", has_unstaged),
-                action("u", "Unstage all", has_staged),
-                action("k", "Discard", has_changes),
+                maybe_action("space", "Stage / Unstage", has_changes),
+                maybe_action("a", "Stage all", has_unstaged),
+                maybe_action("u", "Unstage all", has_staged),
+                maybe_action("k", "Discard", has_changes),
             ],
         ),
-        section(
+        section_opt(
             "Commit",
-            vec![action("c", "Commit staged changes", has_staged)],
+            vec![maybe_action("c", "Commit staged changes", has_staged)],
         ),
-        section(
+        section_opt(
             "Repo",
-            vec![
-                action("b", "Switch branch", true),
-                action("p", "Switch project", true),
-            ],
+            vec![Some(action("b", "Switch branch")), Some(action("p", "Switch project"))],
         ),
-        section(
+        section_opt(
             "Search & View",
             vec![
-                action("/", "Search diff", state.current_diff.is_some()),
-                action("f", "Project search", true),
-                action("h", "Open history tab", true),
+                maybe_action("/", "Search diff", has_diff),
+                Some(action("f", "Project search")),
+                Some(action("h", "Open history tab")),
             ],
         ),
-        section(
+        section_opt(
             "Navigation",
             vec![
-                action("↑↓", "Move selection", has_changes),
-                action("←→", "Collapse / Expand", has_changes),
-                action("enter", "Focus diff", state.current_diff.is_some()),
+                maybe_action("↑↓", "Move selection", has_changes),
+                maybe_action("←→", "Collapse / Expand", has_changes),
+                maybe_action("enter", "Focus diff", has_diff),
             ],
         ),
-    ];
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
 
     FooterModel {
         target_label,
@@ -197,14 +196,10 @@ fn build_history_model(state: &State) -> FooterModel {
     let has_file = state.history_selected_path.is_some();
     let diff_ready = state.history_diff.is_some();
 
-    let preview_actions = vec![
-        action(".", "Actions", true),
-        action("y", "Copy hash", has_commit),
-        action("/", "Search diff", diff_ready),
-    ];
+    let preview_actions = vec![action(".", "Actions")];
 
     let nav_label = match state.history_focus {
-        HistoryFocus::CommitList => "Focus file list / diff",
+        HistoryFocus::CommitList => "Focus file list",
         HistoryFocus::FileList => "Focus diff",
         HistoryFocus::DiffView => "Back to file list",
     };
@@ -212,29 +207,32 @@ fn build_history_model(state: &State) -> FooterModel {
     let history_enabled = has_commit || has_file;
 
     let sections = vec![
-        section(
+        section_opt(
             "History",
             vec![
-                action("↑↓", "Move history selection", history_enabled),
-                action("enter", nav_label, history_enabled),
+                maybe_action("↑↓", "Move history selection", history_enabled),
+                maybe_action("enter", nav_label, history_enabled),
             ],
         ),
-        section("Commit", vec![action("y", "Copy commit hash", has_commit)]),
-        section(
+        section_opt(
+            "Commit",
+            vec![maybe_action("y", "Copy commit hash", has_commit)],
+        ),
+        section_opt(
             "View",
             vec![
-                action("/", "Search diff", diff_ready),
-                action("t", "Switch to changes tab", true),
+                maybe_action("/", "Search diff", diff_ready),
+                Some(action("t", "Switch to changes tab")),
             ],
         ),
-        section(
+        section_opt(
             "Repo",
-            vec![
-                action("b", "Switch branch", true),
-                action("p", "Switch project", true),
-            ],
+            vec![Some(action("b", "Switch branch")), Some(action("p", "Switch project"))],
         ),
-    ];
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
 
     FooterModel {
         target_label,
@@ -297,7 +295,7 @@ pub(crate) fn view_actions_footer(state: &State) -> Element<'_, Message> {
     let title_fg = palette.background.base.text;
     let subtle_fg = palette.background.strong.text.scale_alpha(0.7);
 
-    let mut preview = row![text("Actions").size(13).color(title_fg)].spacing(12);
+    let mut preview = row![].spacing(12);
     for item in &model.preview_actions {
         preview = preview.push(action_chip(item, palette));
     }
@@ -318,7 +316,7 @@ pub(crate) fn view_actions_footer(state: &State) -> Element<'_, Message> {
                 .size(14)
                 .color(title_fg),
             Space::new().width(Fill),
-            action_chip(&action("esc", "close", true), palette),
+            action_chip(&action("esc", "close"), palette),
         ]
         .align_y(iced::Alignment::Center);
 
@@ -459,7 +457,7 @@ mod tests {
     }
 
     #[test]
-    fn changes_file_model_shows_file_target_and_commit_preview() {
+    fn changes_file_model_shows_file_target_and_only_available_actions() {
         let mut state = test_state();
         state.current_branch = Some("main".to_owned());
         state.files = vec![ChangedFile {
@@ -476,11 +474,19 @@ mod tests {
         assert_eq!(model.mode_label, "current: file");
         assert_eq!(model.preview_actions[1].label, "Stage");
         assert_eq!(model.sections[0].title, "Files");
-        assert!(!model.sections[1].actions[0].enabled);
+        assert_eq!(model.sections[0].actions.len(), 3);
+        assert!(model.sections.iter().all(|section| section
+            .actions
+            .iter()
+            .all(|action| action.enabled)));
+        assert!(model.sections.iter().all(|section| section
+            .actions
+            .iter()
+            .all(|action| action.label != "Commit staged changes")));
     }
 
     #[test]
-    fn clean_repo_model_shows_repo_preview() {
+    fn clean_repo_model_hides_transient_only_preview_actions() {
         let mut state = test_state();
         state.current_branch = Some("main".to_owned());
         state.focused_sidebar_target = Some(SidebarTarget::Root);
@@ -489,11 +495,12 @@ mod tests {
 
         assert_eq!(model.target_label, "repository");
         assert_eq!(model.mode_label, "current: clean repo");
-        assert_eq!(model.preview_actions[1].label, "Branch");
+        assert_eq!(model.preview_actions.len(), 1);
+        assert_eq!(model.preview_actions[0].label, "Actions");
     }
 
     #[test]
-    fn history_file_model_uses_commit_qualified_target() {
+    fn history_file_model_uses_commit_qualified_target_and_hides_transient_preview() {
         let mut state = test_state();
         state.current_branch = Some("main".to_owned());
         state.sidebar_tab = SidebarTab::History;
@@ -505,12 +512,13 @@ mod tests {
 
         assert_eq!(model.target_label, "src/main.rs @ abc1234");
         assert_eq!(model.mode_label, "current: history");
-        assert_eq!(model.preview_actions[1].label, "Copy hash");
+        assert_eq!(model.preview_actions.len(), 1);
+        assert_eq!(model.preview_actions[0].label, "Actions");
         assert_eq!(model.sections[0].title, "History");
     }
 
     #[test]
-    fn history_diff_without_loaded_diff_disables_search() {
+    fn history_diff_without_loaded_diff_hides_search() {
         let mut state = test_state();
         state.current_branch = Some("main".to_owned());
         state.sidebar_tab = SidebarTab::History;
@@ -520,7 +528,10 @@ mod tests {
 
         let model = build_footer_model(&state);
 
-        assert!(!model.preview_actions[2].enabled);
-        assert!(!model.sections[2].actions[0].enabled);
+        assert!(model.preview_actions.iter().all(|action| action.label != "Search"));
+        assert!(model.sections.iter().all(|section| section
+            .actions
+            .iter()
+            .all(|action| action.label != "Search diff")));
     }
 }

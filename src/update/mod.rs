@@ -122,7 +122,10 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::HistoryDiffLoaded(request_id, result) => {
             history::handle_history_diff_loaded(state, request_id, result)
         }
-        Message::CopyCommitHash(hash) => clipboard::write(hash).discard(),
+        Message::CopyCommitHash(hash) => {
+            state.set_status_message("Copied commit hash", StatusTone::Success);
+            clipboard::write(hash).discard()
+        }
         Message::RequestDiscard => repo::handle_request_discard(state),
         Message::ConfirmDiscard => repo::handle_confirm_discard(state),
         Message::CancelDiscard => repo::handle_cancel_discard(state),
