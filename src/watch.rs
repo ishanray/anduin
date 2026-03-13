@@ -128,13 +128,51 @@ fn is_relevant_path(path: &Path, workdir: &Path) -> bool {
         if let Some(first) = components.next() {
             let first = first.as_os_str();
 
-            if first == OsStr::new(".git") || first == OsStr::new("target") {
+            if first == OsStr::new("target") {
                 return false;
+            }
+
+            // Inside .git, only watch paths that signal state changes
+            // (commits, index updates, branch switches, merges, rebases).
+            if first == OsStr::new(".git") {
+                return is_relevant_git_path(relative);
             }
         }
     }
 
     true
+}
+
+/// Returns `true` for `.git/` sub-paths that indicate git state changes
+/// we care about: index, HEAD, refs, and merge/rebase state files.
+fn is_relevant_git_path(relative: &Path) -> bool {
+    let rest = match relative.strip_prefix(".git") {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+
+    // Single-file sentinels right under .git/
+    if let Some(name) = rest.file_name().and_then(|n| n.to_str())
+        && rest.parent().is_some_and(|p| p.as_os_str().is_empty())
+    {
+        return matches!(
+            name,
+            "index"
+                | "packed-refs"
+                | "HEAD"
+                | "ORIG_HEAD"
+                | "FETCH_HEAD"
+                | "MERGE_HEAD"
+                | "REBASE_HEAD"
+                | "CHERRY_PICK_HEAD"
+                | "REVERT_HEAD"
+                | "BISECT_HEAD"
+                | "AUTO_MERGE"
+        );
+    }
+
+    // Anything under .git/refs/ (branch tips, tags, remotes)
+    rest.starts_with("refs")
 }
 
 fn watch_config(repo_path: &Path) -> Result<WatchConfig, String> {

@@ -140,6 +140,26 @@ pub(crate) struct State {
     pub(crate) history_commit_header: Option<Commit>,
     pub(crate) history_focus: HistoryFocus,
     pub(crate) changes_focus: ChangesFocus,
+    pub(crate) commit_list_scroll_id: Id,
+    pub(crate) commit_list_scroll_offset: f32,
+    pub(crate) commit_list_viewport_height: f32,
+    pub(crate) discard_confirm: Option<DiscardConfirm>,
+    pub(crate) sidebar_context_menu: Option<SidebarContextMenu>,
+    pub(crate) window_size: Option<iced::Size>,
+    pub(crate) pending_settings_save: Option<Instant>,
+}
+
+/// Pending discard confirmation: holds the paths that will be discarded.
+#[derive(Debug, Clone)]
+pub(crate) struct DiscardConfirm {
+    pub(crate) paths: Vec<String>,
+    pub(crate) focused_button: DiscardButton,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DiscardButton {
+    Cancel,
+    Discard,
 }
 
 #[derive(Debug, Clone)]
@@ -171,6 +191,18 @@ pub(crate) struct ProjectSearch {
     pub(crate) cached_summary: String,
     pub(crate) cached_file_summary: String,
     pub(crate) cached_result_summary: String,
+}
+
+/// State for the right-click context menu in the sidebar.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(crate) struct SidebarContextMenu {
+    /// The relative path that was right-clicked (file or dir).
+    pub(crate) path: String,
+    /// Whether the target is a directory.
+    pub(crate) is_dir: bool,
+    /// Index of the sidebar row that was right-clicked (for positioning).
+    pub(crate) row_index: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -212,6 +244,8 @@ pub(crate) enum Message {
     BranchPickerFilterChanged(String),
     SwitchBranch(String),
     BranchSwitched(Result<(), String>),
+    CreateBranch(String),
+    BranchCreated(Result<(), String>),
     CurrentBranchFetched(Result<String, String>),
     OpenProjectPicker,
     #[allow(dead_code)]
@@ -224,8 +258,21 @@ pub(crate) enum Message {
     CommitFilesLoaded(Result<Vec<ChangedFile>, String>),
     SelectHistoryFile(usize),
     HistoryDiffLoaded(u64, Result<FileDiff, String>),
-    LoadMoreCommits,
     CopyCommitHash(String),
+    CommitListScrolled(f32, f32, f32),
+    RequestDiscard,
+    ConfirmDiscard,
+    CancelDiscard,
+    WindowResized(iced::Size),
+    WindowCloseRequested,
+    SettingsSaveTick,
+    FocusRoot,
+    FocusDir(String),
+    OpenInEditor(String),
+    ShowContextMenu { path: String, is_dir: bool, row_index: usize },
+    CloseContextMenu,
+    AddToGitignore(String),
+    GitignoreFinished(Result<String, String>),
 }
 
 impl ThemeMode {
@@ -313,6 +360,18 @@ impl BranchPicker {
 
         prefix.extend(rest);
         prefix
+    }
+
+    /// Whether the "Create <filter>" option should appear.
+    /// Shown when the filter is non-empty and no existing branches match the filter.
+    pub(crate) fn should_show_create(&self) -> bool {
+        !self.filter.is_empty() && self.filtered_branches().is_empty()
+    }
+
+    /// Total number of items in the picker list (create item + filtered branches).
+    pub(crate) fn total_items(&self) -> usize {
+        let create = if self.should_show_create() { 1 } else { 0 };
+        create + self.filtered_branches().len()
     }
 }
 
@@ -479,6 +538,10 @@ impl State {
         self.project_picker.is_some()
     }
 
+    pub(crate) fn is_discard_confirm_open(&self) -> bool {
+        self.discard_confirm.is_some()
+    }
+
     pub(crate) fn app_theme(&self) -> Theme {
         self.cached_theme.clone()
     }
@@ -488,6 +551,8 @@ impl State {
             theme: self.theme_mode.preference(),
             repo_path: Some(self.repo_path.to_string_lossy().into_owned()),
             recent_repos: self.recent_repos.clone(),
+            window_width: self.window_size.map(|s| s.width),
+            window_height: self.window_size.map(|s| s.height),
         };
 
         if let Err(error) = config::save_settings(&settings) {

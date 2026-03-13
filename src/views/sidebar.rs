@@ -4,8 +4,8 @@ use crate::tree::SidebarRow;
 use crate::{MONO, PANEL_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT, TREE_INDENT, lucide};
 use iced::theme::palette::Extended;
 use iced::widget::text::Wrapping;
-use iced::widget::{Space, button, column, container, mouse_area, row, rule, scrollable, text, text_input};
-use iced::{Element, Fill, Theme};
+use iced::widget::{Space, Stack, button, column, container, mouse_area, row, rule, scrollable, text, text_input};
+use iced::{Element, Fill, Length, Theme};
 
 pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
     let theme = state.app_theme();
@@ -67,7 +67,8 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
         let items: Vec<Element<'_, Message>> = state
             .visible_cached_rows()
             .into_iter()
-            .map(|row_data| {
+            .enumerate()
+            .map(|(row_index, row_data)| {
                 let target = state.sidebar_target_for_row(row_data);
                 let is_focused = state.focused_sidebar_target.as_ref() == Some(&target);
                 let is_range_selected = state.is_sidebar_target_selected(&target);
@@ -113,10 +114,19 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                         };
                         let recursive = state.alt_pressed;
 
+                        let chevron_hit: Element<'_, Message> = mouse_area(
+                            container(chevron_icon)
+                                .width(24)
+                                .center_y(Fill)
+                                .padding([0, 4]),
+                        )
+                        .on_press(Message::ToggleRoot(recursive))
+                        .into();
+
                         mouse_area(
                             container(
                                 row![
-                                    container(chevron_icon).width(16),
+                                    chevron_hit,
                                     container(folder_el).width(20),
                                     container(stage_indicator).width(12),
                                     text(name.as_str()).size(13).font(MONO).color(item_fg),
@@ -130,7 +140,8 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                                 container::Style::default().background(item_bg)
                             }),
                         )
-                        .on_press(Message::ToggleRoot(recursive))
+                        .on_press(Message::FocusRoot)
+                        .on_double_click(Message::OpenInEditor(".".to_owned()))
                         .into()
                     }
                     SidebarRow::Dir {
@@ -158,11 +169,21 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                         let recursive = state.alt_pressed;
                         let depth = *depth;
 
+                        let chevron_hit: Element<'_, Message> = mouse_area(
+                            container(chevron_icon)
+                                .width(24)
+                                .center_y(Fill)
+                                .padding([0, 4]),
+                        )
+                        .on_press(Message::ToggleDir(path.clone(), recursive))
+                        .into();
+
+                        let path_for_editor = path.clone();
                         mouse_area(
                             container(
                                 row![
                                     Space::new().width((depth as f32) * TREE_INDENT),
-                                    container(chevron_icon).width(16),
+                                    chevron_hit,
                                     container(folder_el).width(20),
                                     container(stage_indicator).width(12),
                                     text(name.as_str()).size(13).font(MONO).color(item_fg),
@@ -176,7 +197,13 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                                 container::Style::default().background(item_bg)
                             }),
                         )
-                        .on_press(Message::ToggleDir(path.clone(), recursive))
+                        .on_press(Message::FocusDir(path.clone()))
+                        .on_right_press(Message::ShowContextMenu {
+                            path: path.clone(),
+                            is_dir: true,
+                            row_index,
+                        })
+                        .on_double_click(Message::OpenInEditor(path_for_editor))
                         .into()
                     }
                     SidebarRow::File {
@@ -242,6 +269,12 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                             })
                             .unwrap_or_else(|| Space::new().width(0).into());
 
+                        let file_path = state
+                            .files
+                            .get(index)
+                            .map(|f| f.path.clone())
+                            .unwrap_or_default();
+
                         mouse_area(
                             container(
                                 row![
@@ -270,6 +303,12 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                             }),
                         )
                         .on_press(Message::SelectFile(index))
+                        .on_right_press(Message::ShowContextMenu {
+                            path: file_path.clone(),
+                            is_dir: false,
+                            row_index,
+                        })
+                        .on_double_click(Message::OpenInEditor(file_path))
                         .into()
                     }
                 }
@@ -379,36 +418,54 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
         }
     };
 
-    let mut sidebar_column = column![header, rule::horizontal(1)].height(Fill);
+    let sidebar_column = column![
+        header,
+        rule::horizontal(1),
+        tab_bar,
+        rule::horizontal(1),
+        main_list,
+        rule::horizontal(1),
+        footer,
+    ]
+    .height(Fill);
 
-    if state.is_branch_picker_open() {
-        sidebar_column = sidebar_column.push(view_branch_picker(state));
-        sidebar_column = sidebar_column.push(rule::horizontal(1));
+    // Build overlay for branch/project picker floating on top
+    let has_overlay = state.is_branch_picker_open() || state.is_project_picker_open();
+
+    let base: Element<'_, Message> = container(sidebar_column)
+        .style(move |_theme: &Theme| {
+            container::Style::default()
+                .background(sidebar_bg)
+                .border(iced::Border {
+                    color: sidebar_border,
+                    width: 0.0,
+                    radius: 0.into(),
+                })
+        })
+        .height(Fill)
+        .into();
+
+    if !has_overlay {
+        return base;
     }
 
-    if state.is_project_picker_open() {
-        sidebar_column = sidebar_column.push(view_project_picker(state));
-        sidebar_column = sidebar_column.push(rule::horizontal(1));
-    }
+    // Picker overlay floats below the header (48px + 1px rule)
+    let overlay_content: Element<'_, Message> = if state.is_branch_picker_open() {
+        view_branch_picker(state)
+    } else {
+        view_project_picker(state)
+    };
 
-    sidebar_column = sidebar_column.push(tab_bar);
-    sidebar_column = sidebar_column.push(rule::horizontal(1));
-    sidebar_column = sidebar_column.push(main_list);
-    sidebar_column = sidebar_column.push(rule::horizontal(1));
-    sidebar_column = sidebar_column.push(footer);
+    let overlay = container(overlay_content)
+        .width(Fill)
+        .padding(iced::Padding { top: PANEL_HEADER_HEIGHT + 1.0, right: 0.0, bottom: 0.0, left: 0.0 });
 
-    container(sidebar_column)
-    .style(move |_theme: &Theme| {
-        container::Style::default()
-            .background(sidebar_bg)
-            .border(iced::Border {
-                color: sidebar_border,
-                width: 0.0,
-                radius: 0.into(),
-            })
-    })
-    .height(Fill)
-    .into()
+    Stack::new()
+        .push(base)
+        .push(overlay.height(Length::Shrink))
+        .height(Fill)
+        .width(Fill)
+        .into()
 }
 
 fn view_commit_list(state: &State) -> Element<'_, Message> {
@@ -466,29 +523,25 @@ fn view_commit_list(state: &State) -> Element<'_, Message> {
         })
         .collect();
 
-    // Load more / loading indicator
-    if !state.commits_exhausted {
-        let load_more: Element<'_, Message> = if state.commits_loading {
+    // Loading indicator (commits auto-load on scroll)
+    if state.commits_loading {
+        items.push(
             container(text("Loading…").size(12).font(MONO).color(muted_fg))
                 .padding([8, 12])
                 .width(Fill)
-                .into()
-        } else {
-            mouse_area(
-                container(text("Load more").size(12).font(MONO).color(palette.primary.base.color))
-                    .padding([8, 12])
-                    .width(Fill),
-            )
-            .on_press(Message::LoadMoreCommits)
-            .into()
-        };
-        items.push(load_more);
+                .into(),
+        );
     }
 
     let commit_list_focused = state.history_focus == HistoryFocus::CommitList;
     let focus_color = palette.primary.base.color;
 
-    let list = scrollable(column(items).spacing(1).padding([4, 8])).height(Fill);
+    let list = scrollable(column(items).spacing(1).padding([4, 8]))
+        .id(state.commit_list_scroll_id.clone())
+        .on_scroll(|viewport| {
+            Message::CommitListScrolled(viewport.absolute_offset().y, viewport.bounds().height, viewport.content_bounds().height)
+        })
+        .height(Fill);
 
     container(list)
         .height(Fill)
@@ -528,12 +581,51 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
 
     let filtered = picker.filtered_branches();
 
+    let show_create = picker.should_show_create();
+    let index_offset: usize = if show_create { 1 } else { 0 };
+
+    let mut all_items: Vec<Element<'_, Message>> = Vec::new();
+
+    // "Create <filter>" as first item when applicable
+    if show_create {
+        let is_selected = picker.selected_index == 0;
+        let create_name = picker.filter.clone();
+        let create_bg = if is_selected {
+            success_color.scale_alpha(0.15)
+        } else {
+            bg
+        };
+        let create_fg = success_color;
+
+        let row_content = row![
+            lucide::plus().size(12).color(create_fg),
+            text("Create ").size(13).color(create_fg),
+            text(create_name.clone()).size(13).font(MONO).color(create_fg),
+        ]
+        .spacing(4)
+        .align_y(iced::Alignment::Center);
+
+        all_items.push(
+            mouse_area(
+                container(row_content)
+                    .width(Fill)
+                    .padding([6, 12])
+                    .style(move |_: &Theme| {
+                        container::Style::default().background(create_bg)
+                    }),
+            )
+            .on_press(Message::CreateBranch(create_name))
+            .into(),
+        );
+    }
+
+    // Existing branch items
     let branch_items: Vec<Element<'_, Message>> = filtered
         .iter()
         .enumerate()
         .map(|(i, branch)| {
             let is_current = *branch == picker.current;
-            let is_selected = i == picker.selected_index;
+            let is_selected = (i + index_offset) == picker.selected_index;
             let item_bg = if is_selected { hover_bg } else { bg };
             let item_fg = if is_selected { hover_fg } else { fg };
             let branch_owned = branch.to_string();
@@ -565,7 +657,9 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
         })
         .collect();
 
-    let branch_list: Element<'_, Message> = if branch_items.is_empty() {
+    all_items.extend(branch_items);
+
+    let branch_list: Element<'_, Message> = if all_items.is_empty() {
         container(
             text("No matching branches")
                 .size(12)
@@ -574,7 +668,7 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
         .padding([8, 12])
         .into()
     } else {
-        scrollable(column(branch_items).spacing(2))
+        scrollable(column(all_items).spacing(2))
             .height(iced::Length::Shrink)
             .into()
     };

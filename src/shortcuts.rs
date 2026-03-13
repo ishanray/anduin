@@ -14,6 +14,8 @@ pub(crate) enum ShortcutAction {
     OpenBranchPicker,
     OpenProjectPicker,
     CloseActive,
+    PreviousTab,
+    NextTab,
 }
 
 pub(crate) fn current_shortcut_platform() -> ShortcutPlatform {
@@ -62,6 +64,10 @@ pub(crate) fn shortcut_action_for_key(
                 Some(ShortcutAction::OpenBranchPicker)
             } else if c.eq_ignore_ascii_case("p") && !modifiers.shift() {
                 Some(ShortcutAction::OpenProjectPicker)
+            } else if modifiers.shift() && (c == "[" || c == "{") {
+                Some(ShortcutAction::PreviousTab)
+            } else if modifiers.shift() && (c == "]" || c == "}") {
+                Some(ShortcutAction::NextTab)
             } else {
                 None
             }
@@ -223,5 +229,44 @@ mod tests {
                 Some(ShortcutAction::CloseActive)
             );
         }
+    }
+
+    #[test]
+    fn cmd_shift_brackets_switch_tabs() {
+        let command_shift = keyboard::Modifiers::LOGO | keyboard::Modifiers::SHIFT;
+        assert_eq!(
+            shortcut_action_for_key(
+                ShortcutPlatform::Mac,
+                keyboard::Key::Character("{"),
+                command_shift,
+            ),
+            Some(ShortcutAction::PreviousTab)
+        );
+        assert_eq!(
+            shortcut_action_for_key(
+                ShortcutPlatform::Mac,
+                keyboard::Key::Character("}"),
+                command_shift,
+            ),
+            Some(ShortcutAction::NextTab)
+        );
+
+        let ctrl_shift = keyboard::Modifiers::CTRL | keyboard::Modifiers::SHIFT;
+        assert_eq!(
+            shortcut_action_for_key(
+                ShortcutPlatform::Linux,
+                keyboard::Key::Character("{"),
+                ctrl_shift,
+            ),
+            Some(ShortcutAction::PreviousTab)
+        );
+        assert_eq!(
+            shortcut_action_for_key(
+                ShortcutPlatform::Linux,
+                keyboard::Key::Character("}"),
+                ctrl_shift,
+            ),
+            Some(ShortcutAction::NextTab)
+        );
     }
 }

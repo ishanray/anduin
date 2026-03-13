@@ -1,13 +1,14 @@
 use super::update;
 use crate::actions::{
-    commit_staged_changes, fetch_current_branch, list_branches, load_changed_files,
+    commit_staged_changes, discard_files, fetch_current_branch, list_branches, load_changed_files,
     load_selected_diff, load_selected_diff_without_focus_change, maybe_run_project_search,
-    scroll_sidebar_to_selected, stage_all_files, stage_files, switch_branch, unstage_all_files,
-    unstage_files,
+    scroll_commit_list_to_selected, scroll_sidebar_to_selected, stage_all_files, stage_files,
+    create_branch, switch_branch, unstage_all_files, unstage_files,
 };
 use crate::app::{
-    ActivePane, BranchPicker, ChangesFocus, CommitComposer, HistoryFocus, Message, ProjectPicker,
-    ProjectSearch, SidebarTab, SidebarTarget, State, StatusTone,
+    ActivePane, BranchPicker, ChangesFocus, CommitComposer, DiscardButton, DiscardConfirm,
+    HistoryFocus, Message, ProjectPicker, ProjectSearch, SidebarTab, SidebarTarget, State,
+    StatusTone,
 };
 use crate::git;
 use crate::search::SEARCH_DEBOUNCE_MS;
@@ -130,6 +131,7 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
     state.branch_picker = None;
     state.project_picker = None;
     state.pending_diff_jump = None;
+    state.discard_confirm = None;
     state.sidebar_scroll_offset = 0.0;
     state.sidebar_viewport_height = 0.0;
     state.active_pane = ActivePane::Sidebar;
@@ -202,8 +204,13 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
     }
 
     // Handle `?` (Shift+/) to toggle shortcuts help, and swallow keys while it's open.
-    if let keyboard::Event::KeyPressed { key, .. } = &event {
-        if matches!(key.as_ref(), keyboard::Key::Character("?")) {
+    if let keyboard::Event::KeyPressed {
+        key,
+        modified_key,
+        ..
+    } = &event
+    {
+        if matches!(modified_key.as_ref(), keyboard::Key::Character("?")) {
             return update(state, Message::ToggleShortcutsHelp);
         }
         if state.show_shortcuts_help {
@@ -218,6 +225,18 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
     }
     if state.show_shortcuts_help {
         return Task::none();
+    }
+
+    // Close context menu on any keypress
+    if state.sidebar_context_menu.is_some()
+        && matches!(event, keyboard::Event::KeyPressed { .. })
+    {
+        state.sidebar_context_menu = None;
+        return Task::none();
+    }
+
+    if state.is_discard_confirm_open() {
+        return handle_discard_confirm_key_event(state, &event);
     }
 
     if state.is_project_picker_open() {
@@ -269,9 +288,16 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
             if state.sidebar_tab == SidebarTab::History {
                 match state.history_focus {
                     HistoryFocus::DiffView => {
-                        state.history_focus = HistoryFocus::FileList;
-                        state.diff_editor.lose_focus();
-                        Task::none()
+                        if state.diff_editor.is_search_open() {
+                            state
+                                .diff_editor
+                                .update(&EditorMessage::CloseSearch)
+                                .map(Message::DiffEditor)
+                        } else {
+                            state.history_focus = HistoryFocus::FileList;
+                            state.diff_editor.lose_focus();
+                            Task::none()
+                        }
                     }
                     HistoryFocus::FileList => {
                         state.history_focus = HistoryFocus::CommitList;
@@ -283,8 +309,15 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
                 // Changes tab
                 match state.changes_focus {
                     ChangesFocus::DiffView => {
-                        state.changes_focus = ChangesFocus::FileList;
-                        focus_sidebar(state)
+                        if state.diff_editor.is_search_open() {
+                            state
+                                .diff_editor
+                                .update(&EditorMessage::CloseSearch)
+                                .map(Message::DiffEditor)
+                        } else {
+                            state.changes_focus = ChangesFocus::FileList;
+                            focus_sidebar(state)
+                        }
                     }
                     ChangesFocus::FileList => {
                         if state.active_pane == ActivePane::Diff
@@ -508,7 +541,7 @@ pub(crate) fn handle_branch_picker_key_event(
     match key.as_ref() {
         keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
             if let Some(picker) = state.branch_picker.as_mut() {
-                let count = picker.filtered_branches().len();
+                let count = picker.total_items();
                 if count > 0 {
                     picker.selected_index = (picker.selected_index + 1).min(count - 1);
                 }
@@ -522,12 +555,23 @@ pub(crate) fn handle_branch_picker_key_event(
             Task::none()
         }
         keyboard::Key::Named(keyboard::key::Named::Enter) => {
-            let branch = state.branch_picker.as_ref().and_then(|picker| {
-                let filtered = picker.filtered_branches();
-                filtered.get(picker.selected_index).map(|s| s.to_string())
-            });
-            if let Some(branch) = branch {
-                update(state, Message::SwitchBranch(branch))
+            if let Some(picker) = state.branch_picker.as_ref() {
+                let show_create = picker.should_show_create();
+                let idx = picker.selected_index;
+
+                if show_create && idx == 0 {
+                    // Create item is selected (first item)
+                    let name = picker.filter.clone();
+                    update(state, Message::CreateBranch(name))
+                } else {
+                    let offset = if show_create { 1 } else { 0 };
+                    let filtered = picker.filtered_branches();
+                    if let Some(branch) = filtered.get(idx - offset).map(|s| s.to_string()) {
+                        update(state, Message::SwitchBranch(branch))
+                    } else {
+                        Task::none()
+                    }
+                }
             } else {
                 Task::none()
             }
@@ -583,6 +627,64 @@ pub(crate) fn handle_branch_switched(
             state.tree_dirty = true;
 
             // Reset history (commits may differ on new branch)
+            state.commits.clear();
+            state.selected_commit = None;
+            state.commit_files.clear();
+            state.commits_loading = false;
+            state.commits_exhausted = false;
+            state.history_selected_file = None;
+            state.history_selected_path = None;
+            state.history_diff = None;
+            state.history_commit_header = None;
+            state.history_focus = HistoryFocus::CommitList;
+
+            state.queue_refresh()
+        }
+        Err(error) => {
+            if let Some(picker) = state.branch_picker.as_mut() {
+                picker.error = Some(error);
+            }
+            Task::none()
+        }
+    }
+}
+
+pub(crate) fn handle_create_branch(state: &mut State, branch: String) -> Task<Message> {
+    let repo_path = state.repo_path.clone();
+    let branch_clone = branch.clone();
+    Task::perform(
+        async move { create_branch(repo_path, branch_clone) },
+        Message::BranchCreated,
+    )
+}
+
+pub(crate) fn handle_branch_created(
+    state: &mut State,
+    result: Result<(), String>,
+) -> Task<Message> {
+    match result {
+        Ok(()) => {
+            let branch_name = state
+                .branch_picker
+                .as_ref()
+                .map(|p| p.filter.clone())
+                .unwrap_or_default();
+
+            state.branch_picker = None;
+            state.current_branch = Some(branch_name.clone());
+            state.set_status_message(
+                format!("Created and switched to {branch_name}"),
+                StatusTone::Success,
+            );
+
+            state.files.clear();
+            state.selected_file = None;
+            state.selected_path = None;
+            state.current_diff = None;
+            state.diff_search_cache.clear();
+            state.initialized_tree = false;
+            state.tree_dirty = true;
+
             state.commits.clear();
             state.selected_commit = None;
             state.commit_files.clear();
@@ -779,7 +881,9 @@ fn handle_history_keyboard_event(state: &mut State, event: &keyboard::Event) -> 
                 let current = state.selected_commit.unwrap_or(0);
                 let next = (current + 1).min(count - 1);
                 if next != current {
-                    update(state, Message::SelectCommit(next))
+                    let select_task = update(state, Message::SelectCommit(next));
+                    let scroll_task = scroll_commit_list_to_selected(state);
+                    Task::batch([select_task, scroll_task])
                 } else {
                     Task::none()
                 }
@@ -788,7 +892,9 @@ fn handle_history_keyboard_event(state: &mut State, event: &keyboard::Event) -> 
                 let current = state.selected_commit.unwrap_or(0);
                 let next = current.saturating_sub(1);
                 if next != current {
-                    update(state, Message::SelectCommit(next))
+                    let select_task = update(state, Message::SelectCommit(next));
+                    let scroll_task = scroll_commit_list_to_selected(state);
+                    Task::batch([select_task, scroll_task])
                 } else {
                     Task::none()
                 }
@@ -903,6 +1009,11 @@ fn handle_file_list_keyboard_event(state: &mut State, event: &keyboard::Event) -
                 state.diff_editor.gain_focus();
             }
             Task::none()
+        }
+        keyboard::Key::Named(keyboard::key::Named::Backspace | keyboard::key::Named::Delete)
+            if no_shortcut_modifiers(*modifiers) =>
+        {
+            update(state, Message::RequestDiscard)
         }
         keyboard::Key::Named(keyboard::key::Named::Escape) => {
             if state.has_explicit_selection() {
@@ -1203,4 +1314,83 @@ fn modifiers_alt_only(modifiers: keyboard::Modifiers) -> bool {
 
 fn no_shortcut_modifiers(modifiers: keyboard::Modifiers) -> bool {
     !modifiers.shift() && !modifiers.control() && !modifiers.alt() && !modifiers.logo()
+}
+
+// --- Discard ---
+
+pub(crate) fn handle_request_discard(state: &mut State) -> Task<Message> {
+    let paths = state.targeted_file_paths();
+    if paths.is_empty() {
+        return Task::none();
+    }
+
+    state.discard_confirm = Some(DiscardConfirm {
+        paths,
+        focused_button: DiscardButton::Cancel,
+    });
+    Task::none()
+}
+
+pub(crate) fn handle_confirm_discard(state: &mut State) -> Task<Message> {
+    let Some(confirm) = state.discard_confirm.take() else {
+        return Task::none();
+    };
+
+    let paths = confirm.paths;
+    let repo_path = state.repo_path.clone();
+
+    Task::perform(
+        async move { discard_files(repo_path, paths) },
+        Message::GitOperationFinished,
+    )
+}
+
+pub(crate) fn handle_cancel_discard(state: &mut State) -> Task<Message> {
+    state.discard_confirm = None;
+    Task::none()
+}
+
+fn handle_discard_confirm_key_event(state: &mut State, event: &keyboard::Event) -> Task<Message> {
+    let keyboard::Event::KeyPressed { key, .. } = event else {
+        return Task::none();
+    };
+
+    match key.as_ref() {
+        keyboard::Key::Named(keyboard::key::Named::Enter) => {
+            let focused = state
+                .discard_confirm
+                .as_ref()
+                .map(|c| c.focused_button)
+                .unwrap_or(DiscardButton::Cancel);
+            match focused {
+                DiscardButton::Discard => update(state, Message::ConfirmDiscard),
+                DiscardButton::Cancel => update(state, Message::CancelDiscard),
+            }
+        }
+        keyboard::Key::Named(keyboard::key::Named::Tab) => {
+            if let Some(confirm) = state.discard_confirm.as_mut() {
+                confirm.focused_button = match confirm.focused_button {
+                    DiscardButton::Cancel => DiscardButton::Discard,
+                    DiscardButton::Discard => DiscardButton::Cancel,
+                };
+            }
+            Task::none()
+        }
+        keyboard::Key::Named(keyboard::key::Named::ArrowLeft) => {
+            if let Some(confirm) = state.discard_confirm.as_mut() {
+                confirm.focused_button = DiscardButton::Cancel;
+            }
+            Task::none()
+        }
+        keyboard::Key::Named(keyboard::key::Named::ArrowRight) => {
+            if let Some(confirm) = state.discard_confirm.as_mut() {
+                confirm.focused_button = DiscardButton::Discard;
+            }
+            Task::none()
+        }
+        keyboard::Key::Named(keyboard::key::Named::Escape) => {
+            update(state, Message::CancelDiscard)
+        }
+        _ => Task::none(),
+    }
 }

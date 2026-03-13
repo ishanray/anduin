@@ -1,4 +1,4 @@
-use crate::SIDEBAR_ROW_HEIGHT;
+use crate::{COMMIT_ROW_HEIGHT, SIDEBAR_ROW_HEIGHT};
 use crate::app::{Commit, DiffSearchCacheEntry, Message, ProjectSearchResponse, SidebarTarget, State};
 use crate::git;
 use crate::git::diff::{ChangedFile, FileDiff, FileStatus};
@@ -41,6 +41,15 @@ pub(crate) fn unstage_files(repo_path: PathBuf, paths: Vec<String>) -> Result<()
 
 pub(crate) fn unstage_all_files(repo_path: PathBuf) -> Result<(), String> {
     git::cli::git_unstage_all(&repo_path).map_err(|e| e.to_string())
+}
+
+pub(crate) fn discard_files(repo_path: PathBuf, paths: Vec<String>) -> Result<String, String> {
+    let count = paths.len();
+    git::cli::git_discard_paths(&repo_path, &paths).map_err(|e| e.to_string())?;
+    Ok(format!(
+        "Discarded {count} file{}",
+        if count == 1 { "" } else { "s" }
+    ))
 }
 
 pub(crate) fn commit_staged_changes(repo_path: PathBuf, summary: String) -> Result<String, String> {
@@ -250,12 +259,54 @@ pub(crate) fn scroll_sidebar_to_selected(state: &State) -> Task<Message> {
     )
 }
 
+pub(crate) fn scroll_commit_list_to_selected(state: &State) -> Task<Message> {
+    let Some(index) = state.selected_commit else {
+        return Task::none();
+    };
+
+    // Column padding top (4) + index * (row height + spacing 1)
+    let row_top = 4.0 + (index as f32) * (COMMIT_ROW_HEIGHT + 1.0);
+    let row_bottom = row_top + COMMIT_ROW_HEIGHT;
+
+    if state.commit_list_viewport_height <= 0.0 {
+        return scroll_to(
+            state.commit_list_scroll_id.clone(),
+            scrollable::AbsoluteOffset { x: 0.0, y: row_top },
+        );
+    }
+
+    let reveal_padding = COMMIT_ROW_HEIGHT;
+    let visible_top = state.commit_list_scroll_offset;
+    let visible_bottom = visible_top + state.commit_list_viewport_height;
+
+    let target_y = if row_top < visible_top + reveal_padding {
+        Some((row_top - reveal_padding).max(0.0))
+    } else if row_bottom > visible_bottom - reveal_padding {
+        Some((row_bottom - state.commit_list_viewport_height + reveal_padding).max(0.0))
+    } else {
+        None
+    };
+
+    let Some(y) = target_y else {
+        return Task::none();
+    };
+
+    scroll_to(
+        state.commit_list_scroll_id.clone(),
+        scrollable::AbsoluteOffset { x: 0.0, y },
+    )
+}
+
 pub(crate) fn list_branches(repo_path: PathBuf) -> Result<(Vec<String>, String), String> {
     git::cli::git_list_branches(&repo_path).map_err(|e| e.to_string())
 }
 
 pub(crate) fn switch_branch(repo_path: PathBuf, branch: String) -> Result<(), String> {
     git::cli::git_switch_branch(&repo_path, &branch).map_err(|e| e.to_string())
+}
+
+pub(crate) fn create_branch(repo_path: PathBuf, branch: String) -> Result<(), String> {
+    git::cli::git_create_branch(&repo_path, &branch).map_err(|e| e.to_string())
 }
 
 pub(crate) fn fetch_current_branch(repo_path: PathBuf) -> Result<String, String> {

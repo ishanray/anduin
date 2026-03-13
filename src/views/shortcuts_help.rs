@@ -93,6 +93,7 @@ pub(crate) fn view_shortcuts_help(state: &State) -> Element<'_, Message> {
         shortcut_row(vec![kbd("A", palette)], "Toggle stage all", palette),
         shortcut_row(vec![kbd("U", palette)], "Unstage all", palette),
         shortcut_row(vec![kbd("C", palette)], "Commit", palette),
+        shortcut_row(vec![kbd("⌫", palette)], "Discard changes", palette),
         shortcut_row(
             vec![kbd(cmd, palette), kbd("B", palette)],
             "Switch branch",

@@ -1,5 +1,9 @@
-use crate::actions::{load_commit_file_diff, load_commit_files, load_commits};
-use crate::app::{ChangesFocus, Commit, HistoryFocus, Message, SidebarTab, State, StatusTone};
+use crate::actions::{
+    load_commit_file_diff, load_commit_files, load_commits, scroll_commit_list_to_selected,
+};
+use crate::app::{
+    ActivePane, ChangesFocus, Commit, HistoryFocus, Message, SidebarTab, State, StatusTone,
+};
 use crate::git::diff::{ChangedFile, FileDiff};
 use iced::Task;
 
@@ -27,9 +31,14 @@ pub(crate) fn handle_switch_sidebar_tab(state: &mut State, tab: SidebarTab) -> T
             }
         }
         SidebarTab::Changes => {
+            state.active_pane = ActivePane::Sidebar;
             state.changes_focus = ChangesFocus::FileList;
+            state.diff_editor.lose_focus();
             state.history_diff = None;
             state.history_commit_header = None;
+            state.ensure_rows_cached();
+            state.retain_sidebar_selection();
+            state.ensure_sidebar_focus();
             Task::none()
         }
     }
@@ -49,7 +58,9 @@ pub(crate) fn handle_commits_loaded(
             state.commits.extend(new_commits);
             // Auto-select first commit on initial load
             if was_empty && !state.commits.is_empty() && state.selected_commit.is_none() {
-                return handle_select_commit(state, 0);
+                let select_task = handle_select_commit(state, 0);
+                let scroll_task = scroll_commit_list_to_selected(state);
+                return Task::batch([select_task, scroll_task]);
             }
         }
         Err(error) => {

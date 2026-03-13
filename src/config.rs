@@ -40,6 +40,10 @@ pub struct Settings {
     pub repo_path: Option<String>,
     #[serde(default)]
     pub recent_repos: Vec<String>,
+    #[serde(default)]
+    pub window_width: Option<f32>,
+    #[serde(default)]
+    pub window_height: Option<f32>,
 }
 
 pub fn load_settings() -> Result<Settings> {

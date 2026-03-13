@@ -25,6 +25,7 @@ use app::{ActivePane, ChangesFocus, HistoryFocus, Message, SidebarTab, State, Th
 use iced::event as iced_event;
 use iced::time;
 use iced::widget::{Id, Stack, container, row, text};
+use iced::window;
 use iced::{Element, Fill, Font, Subscription, Task};
 use iced_code_editor::{CodeEditor, Message as EditorMessage, theme as editor_theme};
 use lucide::LUCIDE_FONT_BYTES;
@@ -33,7 +34,9 @@ use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
 use update::update;
+use views::context_menu::view_context_menu;
 use views::diff::view_diff;
+use views::discard_confirm::view_discard_confirm;
 use views::shortcuts_help::view_shortcuts_help;
 use views::sidebar::view_sidebar;
 
@@ -41,6 +44,8 @@ const MONO: Font = Font::MONOSPACE;
 const TREE_INDENT: f32 = 14.0;
 /// Height of a single sidebar row (content + vertical padding + spacing).
 const SIDEBAR_ROW_HEIGHT: f32 = 24.0;
+/// Estimated height of a single commit list row (two text lines + padding + spacing).
+const COMMIT_ROW_HEIGHT: f32 = 48.0;
 /// Shared height for the top header bars across panels.
 const PANEL_HEADER_HEIGHT: f32 = 48.0;
 
@@ -51,12 +56,21 @@ fn main() -> iced::Result {
         detach_from_terminal();
     }
 
-    iced::application(boot, update, view)
+    let mut app = iced::application(boot, update, view)
         .title("Anduin")
         .font(LUCIDE_FONT_BYTES)
         .theme(|state: &State| state.app_theme())
         .subscription(subscription)
-        .run()
+        .exit_on_close_request(false);
+
+    // Restore saved window size if available
+    if let Ok(settings) = config::load_settings()
+        && let (Some(w), Some(h)) = (settings.window_width, settings.window_height)
+    {
+        app = app.window_size(iced::Size::new(w, h));
+    }
+
+    app.run()
 }
 
 fn should_detach_from_terminal() -> bool {
@@ -107,6 +121,11 @@ fn boot() -> (State, Task<Message>) {
     recent_repos.truncate(20);
 
     eprintln!("[anduin] boot repo_path={}", repo_path.display(),);
+
+    let settings_window_size = match (settings.window_width, settings.window_height) {
+        (Some(w), Some(h)) => Some(iced::Size::new(w, h)),
+        _ => None,
+    };
 
     let theme_mode = ThemeMode::from_preference(settings.theme);
 
@@ -167,6 +186,13 @@ fn boot() -> (State, Task<Message>) {
         history_commit_header: None,
         history_focus: HistoryFocus::CommitList,
         changes_focus: ChangesFocus::FileList,
+        commit_list_scroll_id: Id::unique(),
+        commit_list_scroll_offset: 0.0,
+        commit_list_viewport_height: 0.0,
+        discard_confirm: None,
+        sidebar_context_menu: None,
+        window_size: settings_window_size,
+        pending_settings_save: None,
     };
 
     let branch_task = {
@@ -188,6 +214,12 @@ fn subscription(state: &State) -> Subscription<Message> {
     let mut subscriptions = vec![
         iced_event::listen_with(|event, _status, _window| match event {
             iced::Event::Keyboard(kb_event) => Some(Message::KeyboardEvent(kb_event)),
+            iced::Event::Window(window::Event::Resized(size)) => {
+                Some(Message::WindowResized(size))
+            }
+            iced::Event::Window(window::Event::CloseRequested) => {
+                Some(Message::WindowCloseRequested)
+            }
             _ => None,
         }),
         watch::subscription(state.repo_path.clone()).map(Message::WatchEvent),
@@ -206,6 +238,11 @@ fn subscription(state: &State) -> Subscription<Message> {
     {
         subscriptions
             .push(time::every(Duration::from_millis(50)).map(|_| Message::ProjectSearchTick));
+    }
+
+    if state.pending_settings_save.is_some() {
+        subscriptions
+            .push(time::every(Duration::from_millis(100)).map(|_| Message::SettingsSaveTick));
     }
 
     Subscription::batch(subscriptions)
@@ -233,8 +270,24 @@ fn view(state: &State) -> Element<'_, Message> {
     ]
     .into();
 
-    if state.show_shortcuts_help {
+    if state.discard_confirm.is_some() {
+        let overlay = view_discard_confirm(state);
+        Stack::new()
+            .push(main_content)
+            .push(overlay)
+            .width(Fill)
+            .height(Fill)
+            .into()
+    } else if state.show_shortcuts_help {
         let overlay = view_shortcuts_help(state);
+        Stack::new()
+            .push(main_content)
+            .push(overlay)
+            .width(Fill)
+            .height(Fill)
+            .into()
+    } else if state.sidebar_context_menu.is_some() {
+        let overlay = view_context_menu(state);
         Stack::new()
             .push(main_content)
             .push(overlay)

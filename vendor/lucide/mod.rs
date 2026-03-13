@@ -91,3 +91,7 @@ pub fn git_commit_horizontal() -> Text<'static> {
 pub fn copy() -> Text<'static> {
     icon('\u{e094}')
 }
+
+pub fn eye_off() -> Text<'static> {
+    icon('\u{e0bf}')
+}

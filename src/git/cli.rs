@@ -1,4 +1,6 @@
 use anyhow::{Context, Result, anyhow};
+use std::collections::HashSet;
+use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -245,6 +247,113 @@ pub fn git_current_branch(repo_path: &Path) -> Result<String> {
 /// Switch to the given branch.
 pub fn git_switch_branch(repo_path: &Path, branch: &str) -> Result<()> {
     run_git_command(repo_path, &["switch", branch])
+}
+
+/// Create a new branch and switch to it.
+pub fn git_create_branch(repo_path: &Path, branch: &str) -> Result<()> {
+    run_git_command(repo_path, &["switch", "-c", branch])
+}
+
+/// Discard changes for the given file paths.
+///
+/// - For tracked files: `git checkout HEAD -- <paths>` to discard both staged and unstaged changes.
+/// - For untracked files: remove them from the filesystem.
+///
+/// This is destructive and cannot be undone.
+pub fn git_discard_paths(repo_path: &Path, paths: &[String]) -> Result<()> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+
+    // Partition into tracked (present in HEAD or index) and untracked files.
+    let output = Command::new("git")
+        .args(["status", "--porcelain=v1", "--untracked-files=all"])
+        .current_dir(repo_path)
+        .output()
+        .context("failed to run git status for discard")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut untracked_paths = HashSet::new();
+    for line in stdout.lines() {
+        if line.len() < 4 {
+            continue;
+        }
+        let x = line.as_bytes()[0] as char;
+        let y = line.as_bytes()[1] as char;
+        if x == '?' && y == '?' {
+            let path_part = &line[3..];
+            untracked_paths.insert(path_part.to_owned());
+        }
+    }
+
+    let tracked: Vec<&str> = paths
+        .iter()
+        .filter(|p| !untracked_paths.contains(p.as_str()))
+        .map(String::as_str)
+        .collect();
+
+    let untracked: Vec<&str> = paths
+        .iter()
+        .filter(|p| untracked_paths.contains(p.as_str()))
+        .map(String::as_str)
+        .collect();
+
+    // Discard tracked files: restore to HEAD state (removes staged & unstaged changes)
+    if !tracked.is_empty() {
+        if git_has_head(repo_path)? {
+            let mut args = vec!["checkout", "HEAD", "--"];
+            args.extend(tracked.iter());
+            run_git_command(repo_path, &args)?;
+        } else {
+            // No HEAD yet (fresh repo) — just remove from index
+            let mut args = vec!["rm", "--cached", "-f", "--"];
+            args.extend(tracked.iter());
+            run_git_command(repo_path, &args)?;
+
+            // Also remove the working tree files
+            for path in &tracked {
+                let full = repo_path.join(path);
+                if full.exists() {
+                    fs::remove_file(&full)
+                        .with_context(|| format!("failed to remove {}", full.display()))?;
+                }
+            }
+        }
+    }
+
+    // Remove untracked files
+    for path in &untracked {
+        let full = repo_path.join(path);
+        if full.is_dir() {
+            fs::remove_dir_all(&full)
+                .with_context(|| format!("failed to remove directory {}", full.display()))?;
+        } else if full.exists() {
+            fs::remove_file(&full)
+                .with_context(|| format!("failed to remove {}", full.display()))?;
+        }
+    }
+
+    // Clean up empty parent directories left behind (only within repo)
+    for path in paths {
+        let mut current = repo_path.join(path);
+        loop {
+            current = match current.parent() {
+                Some(p) => p.to_path_buf(),
+                None => break,
+            };
+            if current == repo_path {
+                break;
+            }
+            if current.is_dir() && fs::read_dir(&current).is_ok_and(|mut d| d.next().is_none())
+            {
+                let _ = fs::remove_dir(&current);
+            } else {
+                break;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Fetch commit log entries as `(hash, author, relative_date, subject)` tuples.
