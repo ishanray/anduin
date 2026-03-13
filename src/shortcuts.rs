@@ -13,6 +13,7 @@ pub(crate) enum ShortcutAction {
     OpenProject,
     OpenBranchPicker,
     OpenProjectPicker,
+    ToggleActionsPanel,
     CloseActive,
     PreviousTab,
     NextTab,
@@ -53,6 +54,9 @@ pub(crate) fn shortcut_action_for_key(
     modifiers: keyboard::Modifiers,
 ) -> Option<ShortcutAction> {
     match key {
+        keyboard::Key::Character(".") if modifiers == keyboard::Modifiers::default() => {
+            Some(ShortcutAction::ToggleActionsPanel)
+        }
         keyboard::Key::Character(c) if is_primary_modifier_pressed(platform, modifiers) => {
             if c.eq_ignore_ascii_case("f") {
                 if modifiers.shift() {
@@ -211,6 +215,50 @@ mod tests {
             ),
             Some(ShortcutAction::OpenProjectPicker)
         );
+    }
+
+    #[test]
+    fn bare_dot_opens_actions_panel() {
+        for platform in [
+            ShortcutPlatform::Mac,
+            ShortcutPlatform::Linux,
+            ShortcutPlatform::Windows,
+        ] {
+            assert_eq!(
+                shortcut_action_for_key(
+                    platform,
+                    keyboard::Key::Character("."),
+                    keyboard::Modifiers::default(),
+                ),
+                Some(ShortcutAction::ToggleActionsPanel)
+            );
+        }
+    }
+
+    #[test]
+    fn modified_dot_does_not_open_actions_panel() {
+        for platform in [
+            ShortcutPlatform::Mac,
+            ShortcutPlatform::Linux,
+            ShortcutPlatform::Windows,
+        ] {
+            assert_eq!(
+                shortcut_action_for_key(
+                    platform,
+                    keyboard::Key::Character("."),
+                    keyboard::Modifiers::SHIFT,
+                ),
+                None
+            );
+            assert_eq!(
+                shortcut_action_for_key(
+                    platform,
+                    keyboard::Key::Character("."),
+                    keyboard::Modifiers::CTRL,
+                ),
+                None
+            );
+        }
     }
 
     #[test]

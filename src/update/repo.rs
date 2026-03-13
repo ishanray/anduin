@@ -271,6 +271,7 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
         }
         Some(ShortcutAction::OpenBranchPicker) => update(state, Message::OpenBranchPicker),
         Some(ShortcutAction::OpenProjectPicker) => update(state, Message::OpenProjectPicker),
+        Some(ShortcutAction::ToggleActionsPanel) => update(state, Message::ToggleActionsPanel),
         Some(ShortcutAction::PreviousTab) => {
             let target = match state.sidebar_tab {
                 SidebarTab::Changes => SidebarTab::History,
@@ -847,7 +848,7 @@ fn handle_project_search_keyboard_event(
 fn handle_commit_keyboard_event(state: &mut State, event: &keyboard::Event) -> Task<Message> {
     match shortcut_action_for_event(current_shortcut_platform(), event) {
         Some(ShortcutAction::CloseActive) => update(state, Message::CloseCommitComposer),
-        Some(ShortcutAction::OpenProject | ShortcutAction::OpenDiff | ShortcutAction::OpenBranchPicker | ShortcutAction::OpenProjectPicker | ShortcutAction::PreviousTab | ShortcutAction::NextTab) => Task::none(),
+        Some(ShortcutAction::OpenProject | ShortcutAction::OpenDiff | ShortcutAction::OpenBranchPicker | ShortcutAction::OpenProjectPicker | ShortcutAction::ToggleActionsPanel | ShortcutAction::PreviousTab | ShortcutAction::NextTab) => Task::none(),
         None => {
             let keyboard::Event::KeyPressed { key, modifiers, .. } = event else {
                 return Task::none();
