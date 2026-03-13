@@ -204,14 +204,19 @@ fn build_history_model(state: &State) -> FooterModel {
         HistoryFocus::DiffView => "Back to file list",
     };
 
-    let history_enabled = has_commit || has_file;
+    let history_move_enabled = has_commit || has_file;
+    let enter_enabled = match state.history_focus {
+        HistoryFocus::CommitList => state.selected_commit.is_some() && !state.commit_files.is_empty(),
+        HistoryFocus::FileList => diff_ready,
+        HistoryFocus::DiffView => false,
+    };
 
     let sections = vec![
         section_opt(
             "History",
             vec![
-                maybe_action("↑↓", "Move history selection", history_enabled),
-                maybe_action("enter", nav_label, history_enabled),
+                maybe_action("↑↓", "Move history selection", history_move_enabled),
+                maybe_action("enter", nav_label, enter_enabled),
             ],
         ),
         section_opt(
@@ -533,5 +538,27 @@ mod tests {
             .actions
             .iter()
             .all(|action| action.label != "Search diff")));
+    }
+
+    #[test]
+    fn history_commit_list_without_loaded_files_hides_enter_action() {
+        let mut state = test_state();
+        state.current_branch = Some("main".to_owned());
+        state.sidebar_tab = SidebarTab::History;
+        state.history_focus = HistoryFocus::CommitList;
+        state.history_commit_header = Some(sample_commit());
+        state.commit_files.clear();
+
+        let model = build_footer_model(&state);
+
+        let history_section = model
+            .sections
+            .iter()
+            .find(|section| section.title == "History")
+            .expect("history section present");
+        assert!(history_section
+            .actions
+            .iter()
+            .all(|action| action.key != "enter"));
     }
 }

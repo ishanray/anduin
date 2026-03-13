@@ -1323,6 +1323,9 @@ fn handle_actions_panel_key_event(
             update(state, Message::OpenProjectSearch)
         }
         keyboard::Key::Character("c") | keyboard::Key::Character("C") => {
+            if state.staged_file_count() == 0 {
+                return Some(Task::none());
+            }
             state.show_actions_panel = false;
             update(state, Message::OpenCommitComposer)
         }
@@ -1330,16 +1333,17 @@ fn handle_actions_panel_key_event(
             state.show_actions_panel = false;
             open_diff_search(state)
         }
-        keyboard::Key::Character("h")
-        | keyboard::Key::Character("H")
-        | keyboard::Key::Character("t")
-        | keyboard::Key::Character("T") => {
+        keyboard::Key::Character("h") | keyboard::Key::Character("H")
+            if state.sidebar_tab == SidebarTab::Changes =>
+        {
             state.show_actions_panel = false;
-            let target = match state.sidebar_tab {
-                SidebarTab::Changes => SidebarTab::History,
-                SidebarTab::History => SidebarTab::Changes,
-            };
-            update(state, Message::SwitchSidebarTab(target))
+            update(state, Message::SwitchSidebarTab(SidebarTab::History))
+        }
+        keyboard::Key::Character("t") | keyboard::Key::Character("T")
+            if state.sidebar_tab == SidebarTab::History =>
+        {
+            state.show_actions_panel = false;
+            update(state, Message::SwitchSidebarTab(SidebarTab::Changes))
         }
         keyboard::Key::Character("y") | keyboard::Key::Character("Y") => {
             let Some(commit) = state.history_commit_header.as_ref() else {

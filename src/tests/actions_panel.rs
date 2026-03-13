@@ -271,3 +271,39 @@ fn commit_composer_t_does_not_switch_tabs_after_opening_from_actions() {
     assert_eq!(state.sidebar_tab, SidebarTab::Changes);
     assert!(state.commit_composer.is_some());
 }
+
+#[test]
+fn hidden_t_does_not_switch_tabs_from_changes_actions() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+    state.sidebar_tab = SidebarTab::Changes;
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("t".into())));
+
+    assert_eq!(state.sidebar_tab, SidebarTab::Changes);
+}
+
+#[test]
+fn hidden_h_does_not_switch_tabs_from_history_actions() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+    state.sidebar_tab = SidebarTab::History;
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("h".into())));
+
+    assert_eq!(state.sidebar_tab, SidebarTab::History);
+}
+
+#[test]
+fn hidden_c_does_not_open_commit_composer_without_staged_files() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.show_actions_panel = true;
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("c".into())));
+
+    assert!(state.commit_composer.is_none());
+    assert!(state.show_actions_panel);
+}
