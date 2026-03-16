@@ -48,3 +48,4 @@ jobs:
           executable-name: Anduin
           target: ${{ matrix.platform.target }}
           extra-files: LICENSE README.md
+          changes-file: ""
