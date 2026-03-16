@@ -85,7 +85,8 @@ fn detach_from_terminal() {
 
         match daemon(true, false) {
             Ok(Fork::Parent(_)) => {
-                std::process::exit(0);
+                use std::process;
+                process::exit(0);
             }
             Ok(Fork::Child) => {}
             Err(_) => {
