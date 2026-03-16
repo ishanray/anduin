@@ -2,7 +2,11 @@
 
 A fast Git GUI for coding-agent workflows and worktrees, built with Rust and [Iced](https://iced.rs).
 
-## Build
+## Download
+
+Pre-built binaries for macOS, Linux, and Windows are available on the [Releases](https://github.com/ishanray/anduin/releases) page.
+
+## Build from source
 
 Requires Rust 1.85+.
 
