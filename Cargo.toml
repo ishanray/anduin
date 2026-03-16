@@ -3,7 +3,7 @@ name = "anduin"
 version = "0.1.0"
 edition = "2024"
 description = "A Git GUI optimized for coding agents and git worktrees"
-license = "MIT"
+license = "Unlicense"
 
 [[bin]]
 name = "Anduin"

@@ -1,3 +1,5 @@
 /target
 dist/
 scripts/
+docs/plans/
+dcp.config.ts
