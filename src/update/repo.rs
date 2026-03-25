@@ -318,6 +318,9 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
                 }
             }
         }
+        Some(ShortcutAction::ZoomIn) => update(state, Message::ZoomIn),
+        Some(ShortcutAction::ZoomOut) => update(state, Message::ZoomOut),
+        Some(ShortcutAction::ZoomReset) => update(state, Message::ZoomReset),
         None => {
             if state.sidebar_tab == SidebarTab::History {
                 handle_history_keyboard_event(state, &event)
@@ -825,7 +828,10 @@ fn handle_commit_keyboard_event(state: &mut State, event: &keyboard::Event) -> T
             | ShortcutAction::OpenProjectPicker
             | ShortcutAction::ToggleActionsPanel
             | ShortcutAction::PreviousTab
-            | ShortcutAction::NextTab,
+            | ShortcutAction::NextTab
+            | ShortcutAction::ZoomIn
+            | ShortcutAction::ZoomOut
+            | ShortcutAction::ZoomReset,
         ) => Task::none(),
         None => {
             let keyboard::Event::KeyPressed { key, modifiers, .. } = event else {

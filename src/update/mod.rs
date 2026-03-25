@@ -202,6 +202,21 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
             }
             Task::none()
         }
+        Message::ZoomIn => {
+            state.zoom_level = (state.zoom_level + 0.1).min(3.0);
+            state.pending_settings_save = Some(Instant::now() + Duration::from_millis(500));
+            Task::none()
+        }
+        Message::ZoomOut => {
+            state.zoom_level = (state.zoom_level - 0.1).max(0.5);
+            state.pending_settings_save = Some(Instant::now() + Duration::from_millis(500));
+            Task::none()
+        }
+        Message::ZoomReset => {
+            state.zoom_level = 1.0;
+            state.pending_settings_save = Some(Instant::now() + Duration::from_millis(500));
+            Task::none()
+        }
         Message::OpenInEditor(rel_path) => {
             let full_path = state.repo_path.join(&rel_path);
 

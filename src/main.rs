@@ -11,6 +11,7 @@ mod git;
 #[path = "../vendor/lucide/mod.rs"]
 mod lucide;
 mod search;
+mod shell_env;
 mod shortcuts;
 mod theme;
 mod tree;
@@ -51,6 +52,9 @@ const COMMIT_ROW_HEIGHT: f32 = 48.0;
 const PANEL_HEADER_HEIGHT: f32 = 48.0;
 
 fn main() -> iced::Result {
+    #[cfg(target_os = "macos")]
+    shell_env::bootstrap_shell_environment();
+
     let foreground = env::args().any(|a| a == "--foreground" || a == "-f");
 
     if should_detach_from_terminal() && !foreground {
@@ -61,6 +65,7 @@ fn main() -> iced::Result {
         .title("Anduin")
         .font(LUCIDE_FONT_BYTES)
         .theme(|state: &State| state.app_theme())
+        .scale_factor(|state: &State| state.zoom_level)
         .subscription(subscription)
         .exit_on_close_request(false);
 
@@ -196,6 +201,7 @@ fn boot() -> (State, Task<Message>) {
         sidebar_context_menu: None,
         window_size: settings_window_size,
         pending_settings_save: None,
+        zoom_level: settings.zoom_level.unwrap_or(1.0),
     };
 
     let branch_task = {

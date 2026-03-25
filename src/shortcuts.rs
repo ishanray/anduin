@@ -17,6 +17,9 @@ pub(crate) enum ShortcutAction {
     CloseActive,
     PreviousTab,
     NextTab,
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
 }
 
 pub(crate) fn current_shortcut_platform() -> ShortcutPlatform {
@@ -72,6 +75,12 @@ pub(crate) fn shortcut_action_for_key(
                 Some(ShortcutAction::PreviousTab)
             } else if modifiers.shift() && (c == "]" || c == "}") {
                 Some(ShortcutAction::NextTab)
+            } else if c == "+" || c == "=" {
+                Some(ShortcutAction::ZoomIn)
+            } else if c == "-" || c == "_" {
+                Some(ShortcutAction::ZoomOut)
+            } else if c == "0" {
+                Some(ShortcutAction::ZoomReset)
             } else {
                 None
             }

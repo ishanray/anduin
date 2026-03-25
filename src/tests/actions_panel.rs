@@ -93,6 +93,7 @@ fn test_state() -> State {
         sidebar_context_menu: None,
         window_size: None,
         pending_settings_save: None,
+        zoom_level: 1.0,
     }
 }
 

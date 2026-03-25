@@ -44,6 +44,8 @@ pub struct Settings {
     pub window_width: Option<f32>,
     #[serde(default)]
     pub window_height: Option<f32>,
+    #[serde(default)]
+    pub zoom_level: Option<f32>,
 }
 
 pub fn load_settings() -> Result<Settings> {

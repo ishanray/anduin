@@ -73,6 +73,7 @@ fn test_state(files: Vec<ChangedFile>) -> State {
         sidebar_context_menu: None,
         window_size: None,
         pending_settings_save: None,
+        zoom_level: 1.0,
     };
 
     state.sync_tree_state();

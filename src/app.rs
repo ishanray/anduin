@@ -148,6 +148,7 @@ pub(crate) struct State {
     pub(crate) sidebar_context_menu: Option<SidebarContextMenu>,
     pub(crate) window_size: Option<iced::Size>,
     pub(crate) pending_settings_save: Option<Instant>,
+    pub(crate) zoom_level: f32,
 }
 
 /// Pending discard confirmation: holds the paths that will be discarded.
@@ -279,6 +280,9 @@ pub(crate) enum Message {
     AddToGitignore(String),
     GitignoreFinished(Result<String, String>),
     ClearStatus(u64),
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
 }
 
 impl ThemeMode {
@@ -557,6 +561,7 @@ impl State {
             recent_repos: self.recent_repos.clone(),
             window_width: self.window_size.map(|s| s.width),
             window_height: self.window_size.map(|s| s.height),
+            zoom_level: Some(self.zoom_level),
         };
 
         if let Err(error) = config::save_settings(&settings) {
