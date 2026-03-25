@@ -1,6 +1,7 @@
 use crate::app::{HistoryFocus, Message, SidebarTab, State};
 use crate::git::diff::FileStatus;
 use crate::tree::SidebarRow;
+use crate::views::context_menu::context_menu_area;
 use crate::{MONO, PANEL_HEADER_HEIGHT, SIDEBAR_ROW_HEIGHT, TREE_INDENT, lucide};
 use iced::widget::text::Wrapping;
 use iced::widget::{
@@ -65,8 +66,7 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
         let items: Vec<Element<'_, Message>> = state
             .visible_cached_rows()
             .into_iter()
-            .enumerate()
-            .map(|(row_index, row_data)| {
+            .map(|row_data| {
                 let target = state.sidebar_target_for_row(row_data);
                 let is_focused = state.focused_sidebar_target.as_ref() == Some(&target);
                 let is_range_selected = state.is_sidebar_target_selected(&target);
@@ -177,31 +177,34 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                         .into();
 
                         let path_for_editor = path.clone();
-                        mouse_area(
-                            container(
-                                row![
-                                    Space::new().width((depth as f32) * TREE_INDENT),
-                                    chevron_hit,
-                                    container(folder_el).width(20),
-                                    container(stage_indicator).width(12),
-                                    text(name.as_str()).size(13).font(MONO).color(item_fg),
-                                ]
-                                .spacing(6)
-                                .align_y(iced::Alignment::Center),
+                        let path_for_context = path.clone();
+                        context_menu_area(
+                            mouse_area(
+                                container(
+                                    row![
+                                        Space::new().width((depth as f32) * TREE_INDENT),
+                                        chevron_hit,
+                                        container(folder_el).width(20),
+                                        container(stage_indicator).width(12),
+                                        text(name.as_str()).size(13).font(MONO).color(item_fg),
+                                    ]
+                                    .spacing(6)
+                                    .align_y(iced::Alignment::Center),
+                                )
+                                .width(Fill)
+                                .padding([3, 8])
+                                .style(move |_: &Theme| {
+                                    container::Style::default().background(item_bg)
+                                }),
                             )
-                            .width(Fill)
-                            .padding([3, 8])
-                            .style(move |_: &Theme| {
-                                container::Style::default().background(item_bg)
-                            }),
+                            .on_press(Message::FocusDir(path.clone()))
+                            .on_double_click(Message::OpenInEditor(path_for_editor)),
+                            move |bounds| Message::ShowContextMenu {
+                                path: path_for_context.clone(),
+                                is_dir: true,
+                                bounds,
+                            },
                         )
-                        .on_press(Message::FocusDir(path.clone()))
-                        .on_right_press(Message::ShowContextMenu {
-                            path: path.clone(),
-                            is_dir: true,
-                            row_index,
-                        })
-                        .on_double_click(Message::OpenInEditor(path_for_editor))
                         .into()
                     }
                     SidebarRow::File {
@@ -272,40 +275,44 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                             .map(|f| f.path.clone())
                             .unwrap_or_default();
 
-                        mouse_area(
-                            container(
-                                row![
-                                    Space::new().width((depth as f32) * TREE_INDENT),
-                                    container(lucide::file().size(14).color(muted_fg)).width(16),
-                                    container(status_icon).width(16),
-                                    container(stage_indicator).width(12),
-                                    container(
-                                        text(name.as_str())
-                                            .size(13)
-                                            .font(MONO)
-                                            .color(item_fg)
-                                            .wrapping(Wrapping::None),
-                                    )
-                                    .width(Fill)
-                                    .clip(true),
-                                    match_badge,
-                                ]
-                                .spacing(8)
-                                .align_y(iced::Alignment::Center),
+                        let file_path_for_context = file_path.clone();
+                        context_menu_area(
+                            mouse_area(
+                                container(
+                                    row![
+                                        Space::new().width((depth as f32) * TREE_INDENT),
+                                        container(lucide::file().size(14).color(muted_fg))
+                                            .width(16),
+                                        container(status_icon).width(16),
+                                        container(stage_indicator).width(12),
+                                        container(
+                                            text(name.as_str())
+                                                .size(13)
+                                                .font(MONO)
+                                                .color(item_fg)
+                                                .wrapping(Wrapping::None),
+                                        )
+                                        .width(Fill)
+                                        .clip(true),
+                                        match_badge,
+                                    ]
+                                    .spacing(8)
+                                    .align_y(iced::Alignment::Center),
+                                )
+                                .width(Fill)
+                                .padding([3, 8])
+                                .style(move |_: &Theme| {
+                                    container::Style::default().background(item_bg)
+                                }),
                             )
-                            .width(Fill)
-                            .padding([3, 8])
-                            .style(move |_: &Theme| {
-                                container::Style::default().background(item_bg)
-                            }),
+                            .on_press(Message::SelectFile(index))
+                            .on_double_click(Message::OpenInEditor(file_path)),
+                            move |bounds| Message::ShowContextMenu {
+                                path: file_path_for_context.clone(),
+                                is_dir: false,
+                                bounds,
+                            },
                         )
-                        .on_press(Message::SelectFile(index))
-                        .on_right_press(Message::ShowContextMenu {
-                            path: file_path.clone(),
-                            is_dir: false,
-                            row_index,
-                        })
-                        .on_double_click(Message::OpenInEditor(file_path))
                         .into()
                     }
                 }

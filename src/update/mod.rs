@@ -171,12 +171,12 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ShowContextMenu {
             path,
             is_dir,
-            row_index,
+            bounds,
         } => {
             state.sidebar_context_menu = Some(SidebarContextMenu {
                 path,
                 is_dir,
-                row_index,
+                bounds,
             });
             Task::none()
         }

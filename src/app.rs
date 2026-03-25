@@ -203,8 +203,8 @@ pub(crate) struct SidebarContextMenu {
     pub(crate) path: String,
     /// Whether the target is a directory.
     pub(crate) is_dir: bool,
-    /// Index of the sidebar row that was right-clicked (for positioning).
-    pub(crate) row_index: usize,
+    /// Bounding box of the sidebar row that was right-clicked (for positioning).
+    pub(crate) bounds: iced::Rectangle,
 }
 
 #[derive(Debug, Clone)]
@@ -274,7 +274,7 @@ pub(crate) enum Message {
     ShowContextMenu {
         path: String,
         is_dir: bool,
-        row_index: usize,
+        bounds: iced::Rectangle,
     },
     CloseContextMenu,
     AddToGitignore(String),

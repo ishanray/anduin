@@ -593,7 +593,8 @@ pub(crate) fn handle_branch_switched(
 
             state.branch_picker = None;
             state.current_branch = Some(branch_name.clone());
-            let clear = state.set_status_message(format!("Switched to {branch_name}"), StatusTone::Success);
+            let clear =
+                state.set_status_message(format!("Switched to {branch_name}"), StatusTone::Success);
 
             state.files.clear();
             state.selected_file = None;
@@ -875,8 +876,7 @@ fn handle_history_keyboard_event(state: &mut State, event: &keyboard::Event) -> 
                     Task::none()
                 }
             }
-            keyboard::Key::Named(keyboard::key::Named::ArrowUp)
-            | keyboard::Key::Character("k") => {
+            keyboard::Key::Named(keyboard::key::Named::ArrowUp) | keyboard::Key::Character("k") => {
                 let current = state.selected_commit.unwrap_or(0);
                 let next = current.saturating_sub(1);
                 if next != current {
@@ -910,8 +910,7 @@ fn handle_history_keyboard_event(state: &mut State, event: &keyboard::Event) -> 
                     Task::none()
                 }
             }
-            keyboard::Key::Named(keyboard::key::Named::ArrowUp)
-            | keyboard::Key::Character("k") => {
+            keyboard::Key::Named(keyboard::key::Named::ArrowUp) | keyboard::Key::Character("k") => {
                 let current = state.history_selected_file.unwrap_or(0);
                 let next = current.saturating_sub(1);
                 if next != current {

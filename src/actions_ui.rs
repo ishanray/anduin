@@ -59,7 +59,8 @@ impl ActionsSurfaceCommand {
 pub(crate) fn available_actions_panel_commands(state: &State) -> Vec<ActionsSurfaceCommand> {
     let mut commands = Vec::new();
 
-    let no_repo = state.current_branch.is_none() && state.files.is_empty() && state.commits.is_empty();
+    let no_repo =
+        state.current_branch.is_none() && state.files.is_empty() && state.commits.is_empty();
     if no_repo {
         commands.push(ActionsSurfaceCommand::OpenRepo);
         commands.push(ActionsSurfaceCommand::OpenProjectPicker);
@@ -113,10 +114,9 @@ pub(crate) fn actions_panel_command_for_key(
 
 pub(crate) fn history_enter_label(state: &State) -> Option<&'static str> {
     match state.history_focus {
-        HistoryFocus::CommitList => {
-            (state.selected_commit.is_some() && !state.commit_files.is_empty())
-                .then_some("Focus file list")
-        }
+        HistoryFocus::CommitList => (state.selected_commit.is_some()
+            && !state.commit_files.is_empty())
+        .then_some("Focus file list"),
         HistoryFocus::FileList => state.history_diff.is_some().then_some("Focus diff"),
         HistoryFocus::DiffView => None,
     }

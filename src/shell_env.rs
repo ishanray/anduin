@@ -40,9 +40,7 @@ pub fn bootstrap_shell_environment() {
                     }
                 }
                 Err(error) => {
-                    eprintln!(
-                        "[anduin] warning: failed to probe git after shell import: {error}"
-                    );
+                    eprintln!("[anduin] warning: failed to probe git after shell import: {error}");
                 }
             }
         }

@@ -13,7 +13,9 @@ fn key_event(key: keyboard::Key) -> Message {
     Message::KeyboardEvent(keyboard::Event::KeyPressed {
         key: key.clone(),
         modified_key: key,
-        physical_key: keyboard::key::Physical::Unidentified(keyboard::key::NativeCode::Unidentified),
+        physical_key: keyboard::key::Physical::Unidentified(
+            keyboard::key::NativeCode::Unidentified,
+        ),
         location: keyboard::Location::Standard,
         modifiers: keyboard::Modifiers::default(),
         text: None,
@@ -187,7 +189,10 @@ fn actions_panel_y_copies_hash_from_history_context() {
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("y".into())));
 
     assert_eq!(
-        state.status_message.as_ref().map(|message| message.text.as_str()),
+        state
+            .status_message
+            .as_ref()
+            .map(|message| message.text.as_str()),
         Some("Copied commit hash")
     );
 }

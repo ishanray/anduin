@@ -105,7 +105,10 @@ pub(crate) fn build_footer_model(state: &State) -> FooterModel {
             preview_actions: vec![action(".", "Actions"), action("o", "Open repo")],
             sections: vec![section(
                 "Start",
-                command_actions.into_iter().map(action_from_command).collect(),
+                command_actions
+                    .into_iter()
+                    .map(action_from_command)
+                    .collect(),
             )],
         };
     }
@@ -132,10 +135,7 @@ fn command_actions_for_section(
         .collect()
 }
 
-fn section_commands(
-    commands: &[ActionsSurfaceCommand],
-    title: &str,
-) -> Option<FooterSection> {
+fn section_commands(commands: &[ActionsSurfaceCommand], title: &str) -> Option<FooterSection> {
     let actions = command_actions_for_section(commands, title);
     (!actions.is_empty()).then(|| section(title, actions))
 }
@@ -447,7 +447,7 @@ mod tests {
             sidebar_context_menu: None,
             window_size: None,
             pending_settings_save: None,
-        zoom_level: 1.0,
+            zoom_level: 1.0,
         }
     }
 
@@ -491,14 +491,18 @@ mod tests {
         assert_eq!(model.preview_actions[1].label, "Stage");
         assert_eq!(model.sections[0].title, "Files");
         assert_eq!(model.sections[0].actions.len(), 3);
-        assert!(model.sections.iter().all(|section| section
-            .actions
-            .iter()
-            .all(|action| action.enabled)));
-        assert!(model.sections.iter().all(|section| section
-            .actions
-            .iter()
-            .all(|action| action.label != "Commit staged changes")));
+        assert!(
+            model
+                .sections
+                .iter()
+                .all(|section| section.actions.iter().all(|action| action.enabled))
+        );
+        assert!(model.sections.iter().all(|section| {
+            section
+                .actions
+                .iter()
+                .all(|action| action.label != "Commit staged changes")
+        }));
     }
 
     #[test]
@@ -544,11 +548,18 @@ mod tests {
 
         let model = build_footer_model(&state);
 
-        assert!(model.preview_actions.iter().all(|action| action.label != "Search"));
-        assert!(model.sections.iter().all(|section| section
-            .actions
-            .iter()
-            .all(|action| action.label != "Search diff")));
+        assert!(
+            model
+                .preview_actions
+                .iter()
+                .all(|action| action.label != "Search")
+        );
+        assert!(model.sections.iter().all(|section| {
+            section
+                .actions
+                .iter()
+                .all(|action| action.label != "Search diff")
+        }));
     }
 
     #[test]
@@ -562,13 +573,19 @@ mod tests {
 
         let model = build_footer_model(&state);
 
-        let history_section = match model.sections.iter().find(|section| section.title == "History") {
+        let history_section = match model
+            .sections
+            .iter()
+            .find(|section| section.title == "History")
+        {
             Some(section) => section,
             None => panic!("history section present"),
         };
-        assert!(history_section
-            .actions
-            .iter()
-            .all(|action| action.key != "enter"));
+        assert!(
+            history_section
+                .actions
+                .iter()
+                .all(|action| action.key != "enter")
+        );
     }
 }
