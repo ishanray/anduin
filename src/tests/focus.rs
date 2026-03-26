@@ -1,5 +1,6 @@
 use crate::app::{
-    ActivePane, ChangesFocus, Commit, HistoryFocus, Message, SidebarTab, State, ThemeMode,
+    ActivePane, ActionsMenu, ChangesFocus, Commit, HistoryFocus, Message, SidebarTab, State,
+    ThemeMode,
 };
 use crate::git::diff::{ChangedFile, FileStatus};
 use crate::update;
@@ -46,7 +47,7 @@ fn test_state(files: Vec<ChangedFile>) -> State {
         sidebar_viewport_height: 0.0,
         active_pane: ActivePane::Sidebar,
         cached_theme: theme_mode.app_theme(),
-        show_actions_panel: false,
+        actions_menu: ActionsMenu::new(),
         current_branch: None,
         branch_picker: None,
         project_picker: None,

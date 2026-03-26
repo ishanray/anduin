@@ -1,5 +1,6 @@
 use crate::app::{
-    ActivePane, ChangesFocus, Commit, HistoryFocus, Message, SidebarTab, State, ThemeMode,
+    ActivePane, ActionsMenu, ChangesFocus, Commit, HistoryFocus, Message, SidebarTab, State,
+    ThemeMode,
 };
 use crate::git::diff::{ChangedFile, FileDiff, FileStatus};
 use crate::update;
@@ -71,7 +72,7 @@ fn test_state() -> State {
         sidebar_viewport_height: 0.0,
         active_pane: ActivePane::Sidebar,
         cached_theme: theme_mode.app_theme(),
-        show_actions_panel: false,
+        actions_menu: ActionsMenu::new(),
         current_branch: None,
         branch_picker: None,
         project_picker: None,
@@ -104,16 +105,16 @@ fn toggle_actions_panel_flips_open_state() {
     let mut state = test_state();
 
     let _ = update::update(&mut state, Message::ToggleActionsPanel);
-    assert!(state.show_actions_panel);
+    assert!(state.actions_menu.is_open());
 
     let _ = update::update(&mut state, Message::ToggleActionsPanel);
-    assert!(!state.show_actions_panel);
+    assert!(!state.actions_menu.is_open());
 }
 
 #[test]
 fn repo_opened_closes_actions_panel() {
     let mut state = test_state();
-    state.show_actions_panel = true;
+    state.actions_menu.open();
 
     let repo_path = match env::current_dir() {
         Ok(path) => path,
@@ -121,13 +122,13 @@ fn repo_opened_closes_actions_panel() {
     };
     let _ = update::update(&mut state, Message::RepoOpened(Some(repo_path)));
 
-    assert!(!state.show_actions_panel);
+    assert!(!state.actions_menu.is_open());
 }
 
 #[test]
-fn escape_closes_actions_panel_before_other_navigation() {
+fn escape_closes_actions_panel() {
     let mut state = test_state();
-    state.show_actions_panel = true;
+    state.actions_menu.open();
 
     let _ = update::update(
         &mut state,
@@ -142,14 +143,14 @@ fn escape_closes_actions_panel_before_other_navigation() {
         }),
     );
 
-    assert!(!state.show_actions_panel);
+    assert!(!state.actions_menu.is_open());
 }
 
 #[test]
 fn actions_panel_b_starts_opening_branch_picker() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
 
     let task = update::update(&mut state, key_event(keyboard::Key::Character("b".into())));
 
@@ -160,7 +161,7 @@ fn actions_panel_b_starts_opening_branch_picker() {
 fn actions_panel_p_opens_project_picker() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
 
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("p".into())));
 
@@ -171,7 +172,7 @@ fn actions_panel_p_opens_project_picker() {
 fn actions_panel_h_switches_to_history_tab() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
 
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("h".into())));
 
@@ -182,7 +183,7 @@ fn actions_panel_h_switches_to_history_tab() {
 fn actions_panel_y_copies_hash_from_history_context() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
     state.sidebar_tab = SidebarTab::History;
     state.history_commit_header = Some(sample_commit());
 
@@ -201,7 +202,7 @@ fn actions_panel_y_copies_hash_from_history_context() {
 fn actions_panel_f_opens_project_search() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
 
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("f".into())));
 
@@ -211,7 +212,7 @@ fn actions_panel_f_opens_project_search() {
 #[test]
 fn actions_panel_o_starts_open_repo_flow_without_repo() {
     let mut state = test_state();
-    state.show_actions_panel = true;
+    state.actions_menu.open();
 
     let task = update::update(&mut state, key_event(keyboard::Key::Character("o".into())));
 
@@ -222,7 +223,7 @@ fn actions_panel_o_starts_open_repo_flow_without_repo() {
 fn actions_panel_slash_opens_diff_search_in_changes() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
     state.current_diff = Some(FileDiff {
         path: "src/main.rs".to_owned(),
         raw_patch: "@@ -1 +1 @@\n-old\n+new\n".to_owned(),
@@ -230,7 +231,7 @@ fn actions_panel_slash_opens_diff_search_in_changes() {
 
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("/".into())));
 
-    assert!(!state.show_actions_panel);
+    assert!(!state.actions_menu.is_open());
     assert_eq!(state.changes_focus, ChangesFocus::DiffView);
     assert!(state.diff_editor.is_search_open());
 }
@@ -239,7 +240,7 @@ fn actions_panel_slash_opens_diff_search_in_changes() {
 fn actions_panel_slash_opens_diff_search_in_history() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
     state.sidebar_tab = SidebarTab::History;
     state.history_focus = HistoryFocus::FileList;
     state.history_diff = Some(FileDiff {
@@ -249,7 +250,7 @@ fn actions_panel_slash_opens_diff_search_in_history() {
 
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("/".into())));
 
-    assert!(!state.show_actions_panel);
+    assert!(!state.actions_menu.is_open());
     assert_eq!(state.history_focus, HistoryFocus::DiffView);
     assert!(state.diff_editor.is_search_open());
 }
@@ -258,7 +259,7 @@ fn actions_panel_slash_opens_diff_search_in_history() {
 fn actions_panel_c_opens_commit_composer_and_closes_panel() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
     state.files = vec![ChangedFile {
         path: "src/main.rs".to_owned(),
         status: FileStatus::Modified,
@@ -269,14 +270,14 @@ fn actions_panel_c_opens_commit_composer_and_closes_panel() {
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("c".into())));
 
     assert!(state.commit_composer.is_some());
-    assert!(!state.show_actions_panel);
+    assert!(!state.actions_menu.is_open());
 }
 
 #[test]
 fn commit_composer_t_does_not_switch_tabs_after_opening_from_actions() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
     state.files = vec![ChangedFile {
         path: "src/main.rs".to_owned(),
         status: FileStatus::Modified,
@@ -295,7 +296,7 @@ fn commit_composer_t_does_not_switch_tabs_after_opening_from_actions() {
 fn hidden_t_does_not_switch_tabs_from_changes_actions() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
     state.sidebar_tab = SidebarTab::Changes;
 
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("t".into())));
@@ -307,7 +308,7 @@ fn hidden_t_does_not_switch_tabs_from_changes_actions() {
 fn hidden_h_does_not_switch_tabs_from_history_actions() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
     state.sidebar_tab = SidebarTab::History;
 
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("h".into())));
@@ -319,10 +320,50 @@ fn hidden_h_does_not_switch_tabs_from_history_actions() {
 fn hidden_c_does_not_open_commit_composer_without_staged_files() {
     let mut state = test_state();
     state.current_branch = Some("main".to_owned());
-    state.show_actions_panel = true;
+    state.actions_menu.open();
 
     let _ = update::update(&mut state, key_event(keyboard::Key::Character("c".into())));
 
     assert!(state.commit_composer.is_none());
-    assert!(state.show_actions_panel);
+    assert!(state.actions_menu.is_open());
+}
+
+#[test]
+fn r_navigates_to_remote_submenu() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.actions_menu.open();
+
+    let _ = update::update(&mut state, key_event(keyboard::Key::Character("r".into())));
+
+    assert!(state.actions_menu.is_open());
+    let children = state.actions_menu.current_children();
+    assert_eq!(children.len(), 2);
+    assert_eq!(children[0].key, "p"); // Push
+    assert_eq!(children[1].key, "l"); // Pull
+}
+
+#[test]
+fn escape_from_remote_pops_back_to_root() {
+    let mut state = test_state();
+    state.current_branch = Some("main".to_owned());
+    state.actions_menu.open();
+    state.actions_menu.navigate(0); // enter Remote
+
+    let _ = update::update(
+        &mut state,
+        Message::KeyboardEvent(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Named(keyboard::key::Named::Escape),
+            modified_key: keyboard::Key::Named(keyboard::key::Named::Escape),
+            physical_key: keyboard::key::Physical::Code(keyboard::key::Code::Escape),
+            location: keyboard::Location::Standard,
+            modifiers: keyboard::Modifiers::default(),
+            text: None,
+            repeat: false,
+        }),
+    );
+
+    // Should be back at root, still open
+    assert!(state.actions_menu.is_open());
+    assert!(state.actions_menu.current_children().len() > 2);
 }

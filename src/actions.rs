@@ -8,6 +8,7 @@ use crate::tree::expand_parent_dirs;
 use crate::views::sidebar::selected_sidebar_row_bounds;
 use crate::{COMMIT_ROW_HEIGHT, SIDEBAR_ROW_HEIGHT};
 use iced::Task;
+use iced::widget::Id;
 use iced::widget::operation::scroll_to;
 use iced::widget::scrollable;
 use std::collections::HashMap;
@@ -299,6 +300,43 @@ pub(crate) fn scroll_commit_list_to_selected(state: &State) -> Task<Message> {
     )
 }
 
+pub(crate) fn scroll_picker_to_selected(
+    scroll_id: Id,
+    index: usize,
+    offset: f32,
+    viewport_height: f32,
+    row_height: f32,
+    spacing: f32,
+) -> Task<Message> {
+    let row_top = (index as f32) * (row_height + spacing);
+    let row_bottom = row_top + row_height;
+
+    if viewport_height <= 0.0 {
+        return scroll_to(
+            scroll_id,
+            scrollable::AbsoluteOffset { x: 0.0, y: row_top },
+        );
+    }
+
+    let reveal_padding = row_height;
+    let visible_top = offset;
+    let visible_bottom = visible_top + viewport_height;
+
+    let target_y = if row_top < visible_top + reveal_padding {
+        Some((row_top - reveal_padding).max(0.0))
+    } else if row_bottom > visible_bottom - reveal_padding {
+        Some((row_bottom - viewport_height + reveal_padding).max(0.0))
+    } else {
+        None
+    };
+
+    let Some(y) = target_y else {
+        return Task::none();
+    };
+
+    scroll_to(scroll_id, scrollable::AbsoluteOffset { x: 0.0, y })
+}
+
 pub(crate) fn list_branches(repo_path: PathBuf) -> Result<(Vec<String>, String), String> {
     git::cli::git_list_branches(&repo_path).map_err(|e| e.to_string())
 }
@@ -309,6 +347,14 @@ pub(crate) fn switch_branch(repo_path: PathBuf, branch: String) -> Result<(), St
 
 pub(crate) fn create_branch(repo_path: PathBuf, branch: String) -> Result<(), String> {
     git::cli::git_create_branch(&repo_path, &branch).map_err(|e| e.to_string())
+}
+
+pub(crate) fn git_push(repo_path: PathBuf) -> Result<String, String> {
+    git::cli::git_push(&repo_path).map_err(|e| e.to_string())
+}
+
+pub(crate) fn git_pull(repo_path: PathBuf) -> Result<String, String> {
+    git::cli::git_pull(&repo_path).map_err(|e| e.to_string())
 }
 
 pub(crate) fn fetch_current_branch(repo_path: PathBuf) -> Result<String, String> {

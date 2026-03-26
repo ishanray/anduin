@@ -1,8 +1,8 @@
 use crate::MONO;
-use crate::actions_ui::{
-    ActionsSurfaceCommand, available_actions_panel_commands, history_enter_label,
+use crate::actions_ui::history_enter_label;
+use crate::app::{
+    HistoryFocus, MenuItem, Message, SidebarTab, SidebarTarget, State, StatusTone,
 };
-use crate::app::{HistoryFocus, Message, SidebarTab, SidebarTarget, State, StatusTone};
 use iced::theme::palette::Extended;
 use iced::widget::{Space, column, container, row, text};
 use iced::{Border, Element, Fill, Font, Theme};
@@ -98,18 +98,49 @@ fn display_target(state: &State) -> String {
 
 pub(crate) fn build_footer_model(state: &State) -> FooterModel {
     if state.current_branch.is_none() && state.files.is_empty() && state.commits.is_empty() {
-        let command_actions = available_actions_panel_commands(state);
         return FooterModel {
             target_label: "no repository".to_owned(),
             mode_label: "current: none".to_owned(),
             preview_actions: vec![action(".", "Actions"), action("o", "Open repo")],
             sections: vec![section(
                 "Start",
-                command_actions
-                    .into_iter()
-                    .map(action_from_command)
-                    .collect(),
+                vec![action("o", "Open repository"), action("p", "Switch project")],
             )],
+        };
+    }
+
+    // When menu is open, show menu tree children
+    if state.actions_menu.is_open() {
+        let label = state.actions_menu.current_label().to_owned();
+        let children = state.actions_menu.current_children();
+        let menu_actions: Vec<FooterAction> = children
+            .iter()
+            .filter(|entry| match &entry.item {
+                MenuItem::Leaf { action, .. } => action.is_available(state),
+                MenuItem::Branch { .. } => true,
+            })
+            .map(|entry| {
+                let label = match &entry.item {
+                    MenuItem::Leaf { label, .. } => label.clone(),
+                    MenuItem::Branch { label, .. } => format!("{label} →"),
+                };
+                action(&entry.key, &label)
+            })
+            .collect();
+
+        let esc_label = if state.actions_menu.current_children().as_ptr()
+            != state.actions_menu.tree.as_ptr()
+        {
+            "back"
+        } else {
+            "close"
+        };
+
+        return FooterModel {
+            target_label: display_target(state),
+            mode_label: label,
+            preview_actions: vec![action("esc", esc_label)],
+            sections: vec![section("Actions", menu_actions)],
         };
     }
 
@@ -117,27 +148,6 @@ pub(crate) fn build_footer_model(state: &State) -> FooterModel {
         SidebarTab::Changes => build_changes_model(state),
         SidebarTab::History => build_history_model(state),
     }
-}
-
-fn action_from_command(command: ActionsSurfaceCommand) -> FooterAction {
-    action(command.key(), command.label())
-}
-
-fn command_actions_for_section(
-    commands: &[ActionsSurfaceCommand],
-    title: &str,
-) -> Vec<FooterAction> {
-    commands
-        .iter()
-        .copied()
-        .filter(|command| command.section() == title)
-        .map(action_from_command)
-        .collect()
-}
-
-fn section_commands(commands: &[ActionsSurfaceCommand], title: &str) -> Option<FooterSection> {
-    let actions = command_actions_for_section(commands, title);
-    (!actions.is_empty()).then(|| section(title, actions))
 }
 
 fn build_changes_model(state: &State) -> FooterModel {
@@ -170,8 +180,6 @@ fn build_changes_model(state: &State) -> FooterModel {
         vec![action(".", "Actions")]
     };
 
-    let command_actions = available_actions_panel_commands(state);
-
     let sections = vec![
         section_opt(
             "Files",
@@ -182,9 +190,6 @@ fn build_changes_model(state: &State) -> FooterModel {
                 maybe_action("k", "Discard", has_changes),
             ],
         ),
-        section_commands(&command_actions, "Commit"),
-        section_commands(&command_actions, "Repo"),
-        section_commands(&command_actions, "Search & View"),
         section_opt(
             "Navigation",
             vec![
@@ -215,20 +220,14 @@ fn build_history_model(state: &State) -> FooterModel {
     let preview_actions = vec![action(".", "Actions")];
 
     let history_move_enabled = has_commit || has_file;
-    let command_actions = available_actions_panel_commands(state);
 
-    let sections = vec![
-        section_opt(
-            "History",
-            vec![
-                maybe_action("↑↓", "Move history selection", history_move_enabled),
-                history_enter_label(state).map(|label| action("enter", label)),
-            ],
-        ),
-        section_commands(&command_actions, "Commit"),
-        section_commands(&command_actions, "Search & View"),
-        section_commands(&command_actions, "Repo"),
-    ]
+    let sections = vec![section_opt(
+        "History",
+        vec![
+            maybe_action("↑↓", "Move history selection", history_move_enabled),
+            history_enter_label(state).map(|label| action("enter", label)),
+        ],
+    )]
     .into_iter()
     .flatten()
     .collect();
@@ -324,7 +323,7 @@ pub(crate) fn view_actions_footer(state: &State) -> Element<'_, Message> {
     ]
     .align_y(iced::Alignment::Center);
 
-    let content: Element<'_, Message> = if state.show_actions_panel {
+    let content: Element<'_, Message> = if state.actions_menu.is_open() {
         let header = row![
             text(format!("Actions for: {}", model.target_label))
                 .size(14)
@@ -378,7 +377,8 @@ pub(crate) fn view_actions_footer(state: &State) -> Element<'_, Message> {
 mod tests {
     use super::build_footer_model;
     use crate::app::{
-        ActivePane, ChangesFocus, Commit, HistoryFocus, SidebarTab, SidebarTarget, State, ThemeMode,
+        ActivePane, ActionsMenu, ChangesFocus, Commit, HistoryFocus, SidebarTab, SidebarTarget,
+        State, ThemeMode,
     };
     use crate::git::diff::{ChangedFile, FileStatus};
     use iced::widget::Id;
@@ -423,7 +423,7 @@ mod tests {
             sidebar_viewport_height: 0.0,
             active_pane: ActivePane::Sidebar,
             cached_theme: theme_mode.app_theme(),
-            show_actions_panel: false,
+            actions_menu: ActionsMenu::new(),
             current_branch: None,
             branch_picker: None,
             project_picker: None,

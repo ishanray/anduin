@@ -23,7 +23,9 @@ mod watch;
 mod tests;
 
 use actions::{fetch_current_branch, load_changed_files};
-use app::{ActivePane, ChangesFocus, HistoryFocus, Message, SidebarTab, State, ThemeMode};
+use app::{
+    ActivePane, ActionsMenu, ChangesFocus, HistoryFocus, Message, SidebarTab, State, ThemeMode,
+};
 use iced::event as iced_event;
 use iced::time;
 use iced::widget::{Id, Stack, column, container, row, text};
@@ -177,7 +179,7 @@ fn boot() -> (State, Task<Message>) {
         sidebar_viewport_height: 0.0,
         active_pane: ActivePane::Sidebar,
         cached_theme,
-        show_actions_panel: false,
+        actions_menu: ActionsMenu::new(),
         current_branch: None,
         branch_picker: None,
         project_picker: None,

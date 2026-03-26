@@ -48,6 +48,9 @@ pub(crate) struct BranchPicker {
     pub(crate) selected_index: usize,
     pub(crate) error: Option<String>,
     pub(crate) input_id: Id,
+    pub(crate) scroll_id: Id,
+    pub(crate) scroll_offset: f32,
+    pub(crate) viewport_height: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -91,6 +94,246 @@ pub(crate) struct Commit {
     pub(crate) message: String,
 }
 
+// --- Recursive menu tree ---
+
+#[derive(Debug, Clone)]
+pub(crate) enum MenuItem {
+    Leaf {
+        label: String,
+        action: MenuAction,
+    },
+    Branch {
+        label: String,
+        children: Vec<MenuEntry>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct MenuEntry {
+    pub(crate) key: String,
+    pub(crate) item: MenuItem,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MenuAction {
+    OpenRepo,
+    OpenBranchPicker,
+    OpenProjectPicker,
+    OpenProjectSearch,
+    OpenCommitComposer,
+    SearchDiff,
+    SwitchToHistoryTab,
+    SwitchToChangesTab,
+    CopyCommitHash,
+    Push,
+    Pull,
+}
+
+impl MenuAction {
+    pub(crate) fn is_available(&self, state: &State) -> bool {
+        match self {
+            Self::OpenRepo
+            | Self::OpenBranchPicker
+            | Self::OpenProjectPicker
+            | Self::OpenProjectSearch => true,
+            Self::OpenCommitComposer => state.staged_file_count() > 0,
+            Self::SearchDiff => {
+                if state.sidebar_tab == SidebarTab::History {
+                    state.history_diff.is_some()
+                } else {
+                    state.current_diff.is_some()
+                }
+            }
+            Self::SwitchToHistoryTab => state.sidebar_tab != SidebarTab::History,
+            Self::SwitchToChangesTab => state.sidebar_tab != SidebarTab::Changes,
+            Self::CopyCommitHash => state.history_commit_header.is_some(),
+            Self::Push | Self::Pull => state.current_branch.is_some(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ActionsMenu {
+    pub(crate) tree: Vec<MenuEntry>,
+    pub(crate) path: Vec<usize>,
+    pub(crate) active: bool,
+}
+
+impl ActionsMenu {
+    fn build_tree() -> Vec<MenuEntry> {
+        vec![
+            MenuEntry {
+                key: "r".to_owned(),
+                item: MenuItem::Branch {
+                    label: "Remote".to_owned(),
+                    children: vec![
+                        MenuEntry {
+                            key: "p".to_owned(),
+                            item: MenuItem::Leaf {
+                                label: "Push".to_owned(),
+                                action: MenuAction::Push,
+                            },
+                        },
+                        MenuEntry {
+                            key: "l".to_owned(),
+                            item: MenuItem::Leaf {
+                                label: "Pull".to_owned(),
+                                action: MenuAction::Pull,
+                            },
+                        },
+                    ],
+                },
+            },
+            MenuEntry {
+                key: "o".to_owned(),
+                item: MenuItem::Leaf {
+                    label: "Open repository".to_owned(),
+                    action: MenuAction::OpenRepo,
+                },
+            },
+            MenuEntry {
+                key: "b".to_owned(),
+                item: MenuItem::Leaf {
+                    label: "Switch branch".to_owned(),
+                    action: MenuAction::OpenBranchPicker,
+                },
+            },
+            MenuEntry {
+                key: "p".to_owned(),
+                item: MenuItem::Leaf {
+                    label: "Switch project".to_owned(),
+                    action: MenuAction::OpenProjectPicker,
+                },
+            },
+            MenuEntry {
+                key: "f".to_owned(),
+                item: MenuItem::Leaf {
+                    label: "Project search".to_owned(),
+                    action: MenuAction::OpenProjectSearch,
+                },
+            },
+            MenuEntry {
+                key: "c".to_owned(),
+                item: MenuItem::Leaf {
+                    label: "Commit staged changes".to_owned(),
+                    action: MenuAction::OpenCommitComposer,
+                },
+            },
+            MenuEntry {
+                key: "/".to_owned(),
+                item: MenuItem::Leaf {
+                    label: "Search diff".to_owned(),
+                    action: MenuAction::SearchDiff,
+                },
+            },
+            MenuEntry {
+                key: "h".to_owned(),
+                item: MenuItem::Leaf {
+                    label: "Open history tab".to_owned(),
+                    action: MenuAction::SwitchToHistoryTab,
+                },
+            },
+            MenuEntry {
+                key: "t".to_owned(),
+                item: MenuItem::Leaf {
+                    label: "Switch to changes tab".to_owned(),
+                    action: MenuAction::SwitchToChangesTab,
+                },
+            },
+            MenuEntry {
+                key: "y".to_owned(),
+                item: MenuItem::Leaf {
+                    label: "Copy commit hash".to_owned(),
+                    action: MenuAction::CopyCommitHash,
+                },
+            },
+        ]
+    }
+
+    pub(crate) fn new() -> Self {
+        Self {
+            tree: Self::build_tree(),
+            path: Vec::new(),
+            active: false,
+        }
+    }
+
+    pub(crate) fn is_open(&self) -> bool {
+        self.active
+    }
+
+    pub(crate) fn open(&mut self) {
+        self.tree = Self::build_tree();
+        self.path.clear();
+        self.active = true;
+    }
+
+    pub(crate) fn close(&mut self) {
+        self.path.clear();
+        self.active = false;
+    }
+
+    pub(crate) fn toggle(&mut self) {
+        if self.active {
+            self.close();
+        } else {
+            self.open();
+        }
+    }
+
+    /// Navigate into a branch child at the given index.
+    pub(crate) fn navigate(&mut self, index: usize) {
+        self.path.push(index);
+    }
+
+    /// Go back one level. Returns false if already at root (menu closes).
+    pub(crate) fn pop(&mut self) -> bool {
+        if self.path.pop().is_some() {
+            true
+        } else {
+            self.active = false;
+            false
+        }
+    }
+
+    /// Get the children visible at the current navigation depth.
+    pub(crate) fn current_children(&self) -> &[MenuEntry] {
+        let mut current = &self.tree;
+        for &index in &self.path {
+            let Some(entry) = current.get(index) else {
+                return &[];
+            };
+            match &entry.item {
+                MenuItem::Branch { children, .. } => current = children,
+                MenuItem::Leaf { .. } => return &[],
+            }
+        }
+        current
+    }
+
+    /// Get the label of the current navigation context (for the header).
+    pub(crate) fn current_label(&self) -> &str {
+        let mut current = &self.tree;
+        let mut label = "Actions";
+        for &index in &self.path {
+            let Some(entry) = current.get(index) else {
+                break;
+            };
+            match &entry.item {
+                MenuItem::Branch {
+                    label: l,
+                    children,
+                } => {
+                    label = l;
+                    current = children;
+                }
+                MenuItem::Leaf { .. } => break,
+            }
+        }
+        label
+    }
+}
+
 pub(crate) struct State {
     pub(crate) repo_path: PathBuf,
     pub(crate) files: Vec<ChangedFile>,
@@ -124,7 +367,7 @@ pub(crate) struct State {
     pub(crate) sidebar_viewport_height: f32,
     pub(crate) active_pane: ActivePane,
     pub(crate) cached_theme: Theme,
-    pub(crate) show_actions_panel: bool,
+    pub(crate) actions_menu: ActionsMenu,
     pub(crate) current_branch: Option<String>,
     pub(crate) branch_picker: Option<BranchPicker>,
     pub(crate) project_picker: Option<ProjectPicker>,
@@ -244,6 +487,7 @@ pub(crate) enum Message {
     OpenBranchPicker,
     BranchesFetched(Result<(Vec<String>, String), String>),
     BranchPickerFilterChanged(String),
+    BranchPickerScrolled(f32, f32),
     SwitchBranch(String),
     BranchSwitched(Result<(), String>),
     CreateBranch(String),
@@ -253,6 +497,7 @@ pub(crate) enum Message {
     #[allow(dead_code)]
     CloseProjectPicker,
     ProjectPickerFilterChanged(String),
+    ProjectPickerScrolled(f32, f32),
     SwitchProject(String),
     SwitchSidebarTab(SidebarTab),
     CommitsLoaded(Result<Vec<Commit>, String>),
@@ -344,6 +589,9 @@ impl BranchPicker {
             selected_index: 0,
             error: None,
             input_id: Id::unique(),
+            scroll_id: Id::unique(),
+            scroll_offset: 0.0,
+            viewport_height: 0.0,
         }
     }
 
@@ -392,6 +640,9 @@ pub(crate) struct ProjectPicker {
     pub(crate) filter: String,
     pub(crate) selected_index: usize,
     pub(crate) input_id: Id,
+    pub(crate) scroll_id: Id,
+    pub(crate) scroll_offset: f32,
+    pub(crate) viewport_height: f32,
 }
 
 impl ProjectPicker {
@@ -402,6 +653,9 @@ impl ProjectPicker {
             filter: String::new(),
             selected_index: 0,
             input_id: Id::unique(),
+            scroll_id: Id::unique(),
+            scroll_offset: 0.0,
+            viewport_height: 0.0,
         }
     }
 

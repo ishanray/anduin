@@ -89,13 +89,20 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
             search::handle_project_search_jump_to(state, file_path, line_number)
         }
         Message::ToggleActionsPanel => {
-            state.show_actions_panel = !state.show_actions_panel;
+            state.actions_menu.toggle();
             Task::none()
         }
         Message::OpenBranchPicker => repo::handle_open_branch_picker(state),
         Message::BranchesFetched(result) => repo::handle_branches_fetched(state, result),
         Message::BranchPickerFilterChanged(filter) => {
             repo::handle_branch_picker_filter_changed(state, filter)
+        }
+        Message::BranchPickerScrolled(offset, viewport_height) => {
+            if let Some(picker) = state.branch_picker.as_mut() {
+                picker.scroll_offset = offset;
+                picker.viewport_height = viewport_height;
+            }
+            Task::none()
         }
         Message::SwitchBranch(branch) => repo::handle_switch_branch(state, branch),
         Message::BranchSwitched(result) => repo::handle_branch_switched(state, result),
@@ -106,6 +113,13 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::CloseProjectPicker => repo::handle_close_project_picker(state),
         Message::ProjectPickerFilterChanged(filter) => {
             repo::handle_project_picker_filter_changed(state, filter)
+        }
+        Message::ProjectPickerScrolled(offset, viewport_height) => {
+            if let Some(picker) = state.project_picker.as_mut() {
+                picker.scroll_offset = offset;
+                picker.viewport_height = viewport_height;
+            }
+            Task::none()
         }
         Message::SwitchProject(repo) => repo::handle_switch_project(state, repo),
         Message::SwitchSidebarTab(tab) => history::handle_switch_sidebar_tab(state, tab),

@@ -419,6 +419,59 @@ pub fn git_commit_files(repo_path: &Path, sha: &str) -> Result<Vec<(char, String
     Ok(files)
 }
 
+/// Push current branch to remote. Sets upstream if none configured.
+pub fn git_push(repo_path: &Path) -> Result<String> {
+    let branch = git_current_branch(repo_path)?;
+
+    let output = Command::new("git")
+        .args(["push"])
+        .current_dir(repo_path)
+        .output()
+        .context("failed to run git push")?;
+
+    if output.status.success() {
+        return Ok(format!("Pushed {branch}"));
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    if stderr.contains("no upstream")
+        || stderr.contains("set-upstream")
+        || stderr.contains("set the remote tracking")
+    {
+        let output = Command::new("git")
+            .args(["push", "--set-upstream", "origin", &branch])
+            .current_dir(repo_path)
+            .output()
+            .context("failed to run git push --set-upstream")?;
+
+        ensure_success(&output, "git push")?;
+        return Ok(format!("Pushed {branch} to origin/{branch}"));
+    }
+
+    ensure_success(&output, "git push")?;
+    unreachable!()
+}
+
+/// Pull current branch with fast-forward only (safe, no merge commits).
+pub fn git_pull(repo_path: &Path) -> Result<String> {
+    let branch = git_current_branch(repo_path)?;
+
+    let output = Command::new("git")
+        .args(["pull", "--ff-only"])
+        .current_dir(repo_path)
+        .output()
+        .context("failed to run git pull")?;
+
+    ensure_success(&output, "git pull")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if stdout.is_empty() || stdout.contains("Already up to date") {
+        Ok(format!("{branch} is up to date"))
+    } else {
+        Ok(format!("Pulled into {branch}"))
+    }
+}
+
 /// Get the diff for a single file within a specific commit.
 ///
 /// Falls back to `git show` for the initial commit where `sha^` does not exist.

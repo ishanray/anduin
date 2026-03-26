@@ -1,17 +1,15 @@
 use super::update;
 use crate::actions::{
-    commit_staged_changes, create_branch, discard_files, fetch_current_branch, list_branches,
-    load_changed_files, load_selected_diff, load_selected_diff_without_focus_change,
-    maybe_run_project_search, scroll_commit_list_to_selected, scroll_sidebar_to_selected,
+    self as actions_mod, commit_staged_changes, create_branch, discard_files,
+    fetch_current_branch, list_branches, load_changed_files, load_selected_diff,
+    load_selected_diff_without_focus_change, maybe_run_project_search,
+    scroll_commit_list_to_selected, scroll_picker_to_selected, scroll_sidebar_to_selected,
     stage_all_files, stage_files, switch_branch, unstage_all_files, unstage_files,
-};
-use crate::actions_ui::{
-    ActionsSurfaceCommand, actions_panel_command_for_key, is_actions_panel_command_key,
 };
 use crate::app::{
     ActivePane, BranchPicker, ChangesFocus, CommitComposer, DiscardButton, DiscardConfirm,
-    HistoryFocus, Message, ProjectPicker, ProjectSearch, SidebarTab, SidebarTarget, State,
-    StatusTone,
+    HistoryFocus, MenuAction, MenuItem, Message, ProjectPicker, ProjectSearch, SidebarTab,
+    SidebarTarget, State, StatusTone,
 };
 use crate::git;
 use crate::search::SEARCH_DEBOUNCE_MS;
@@ -20,6 +18,7 @@ use crate::shortcuts::{
     shortcut_action_for_event,
 };
 use crate::tree::SidebarRow;
+use crate::views::sidebar::PICKER_ROW_HEIGHT;
 use crate::watch;
 use iced::Task;
 use iced::keyboard;
@@ -140,7 +139,7 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
     state.branch_picker = None;
     state.project_picker = None;
     state.pending_diff_jump = None;
-    state.show_actions_panel = false;
+    state.actions_menu.close();
     state.discard_confirm = None;
     state.sidebar_scroll_offset = 0.0;
     state.sidebar_viewport_height = 0.0;
@@ -213,7 +212,7 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
         state.alt_pressed = alt;
     }
 
-    if state.show_actions_panel
+    if state.actions_menu.is_open()
         && let Some(task) = handle_actions_panel_key_event(state, &event)
     {
         return task;
@@ -523,12 +522,28 @@ pub(crate) fn handle_branch_picker_key_event(
                 if count > 0 {
                     picker.selected_index = (picker.selected_index + 1).min(count - 1);
                 }
+                return scroll_picker_to_selected(
+                    picker.scroll_id.clone(),
+                    picker.selected_index,
+                    picker.scroll_offset,
+                    picker.viewport_height,
+                    PICKER_ROW_HEIGHT,
+                    2.0,
+                );
             }
             Task::none()
         }
         keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
             if let Some(picker) = state.branch_picker.as_mut() {
                 picker.selected_index = picker.selected_index.saturating_sub(1);
+                return scroll_picker_to_selected(
+                    picker.scroll_id.clone(),
+                    picker.selected_index,
+                    picker.scroll_offset,
+                    picker.viewport_height,
+                    PICKER_ROW_HEIGHT,
+                    2.0,
+                );
             }
             Task::none()
         }
@@ -739,12 +754,28 @@ pub(crate) fn handle_project_picker_key_event(
                 if count > 0 {
                     picker.selected_index = (picker.selected_index + 1).min(count - 1);
                 }
+                return scroll_picker_to_selected(
+                    picker.scroll_id.clone(),
+                    picker.selected_index,
+                    picker.scroll_offset,
+                    picker.viewport_height,
+                    PICKER_ROW_HEIGHT,
+                    2.0,
+                );
             }
             Task::none()
         }
         keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
             if let Some(picker) = state.project_picker.as_mut() {
                 picker.selected_index = picker.selected_index.saturating_sub(1);
+                return scroll_picker_to_selected(
+                    picker.scroll_id.clone(),
+                    picker.selected_index,
+                    picker.scroll_offset,
+                    picker.viewport_height,
+                    PICKER_ROW_HEIGHT,
+                    2.0,
+                );
             }
             Task::none()
         }
@@ -1313,7 +1344,9 @@ fn handle_actions_panel_key_event(
         key.as_ref(),
         keyboard::Key::Named(keyboard::key::Named::Escape)
     ) {
-        state.show_actions_panel = false;
+        if !state.actions_menu.pop() {
+            // Already at root level, menu closed
+        }
         return Some(Task::none());
     }
 
@@ -1325,34 +1358,69 @@ fn handle_actions_panel_key_event(
         return None;
     };
 
-    let Some(command) = actions_panel_command_for_key(state, key) else {
-        return is_actions_panel_command_key(key).then_some(Task::none());
+    let key = key.to_lowercase();
+
+    // Find matching child in current menu level
+    let children = state.actions_menu.current_children();
+    let Some((index, entry)) = children
+        .iter()
+        .enumerate()
+        .find(|(_, e)| e.key == key)
+    else {
+        return Some(Task::none());
     };
 
-    state.show_actions_panel = false;
+    match &entry.item {
+        MenuItem::Branch { .. } => {
+            state.actions_menu.navigate(index);
+            Some(Task::none())
+        }
+        MenuItem::Leaf { action, .. } => {
+            let action = *action;
+            if !action.is_available(state) {
+                return Some(Task::none());
+            }
+            state.actions_menu.close();
+            Some(execute_menu_action(state, action))
+        }
+    }
+}
 
-    let task = match command {
-        ActionsSurfaceCommand::OpenRepo => update(state, Message::OpenRepo),
-        ActionsSurfaceCommand::OpenBranchPicker => update(state, Message::OpenBranchPicker),
-        ActionsSurfaceCommand::OpenProjectPicker => update(state, Message::OpenProjectPicker),
-        ActionsSurfaceCommand::OpenProjectSearch => update(state, Message::OpenProjectSearch),
-        ActionsSurfaceCommand::OpenCommitComposer => update(state, Message::OpenCommitComposer),
-        ActionsSurfaceCommand::SearchDiff => open_diff_search(state),
-        ActionsSurfaceCommand::SwitchToHistoryTab => {
+fn execute_menu_action(state: &mut State, action: MenuAction) -> Task<Message> {
+    match action {
+        MenuAction::OpenRepo => update(state, Message::OpenRepo),
+        MenuAction::OpenBranchPicker => update(state, Message::OpenBranchPicker),
+        MenuAction::OpenProjectPicker => update(state, Message::OpenProjectPicker),
+        MenuAction::OpenProjectSearch => update(state, Message::OpenProjectSearch),
+        MenuAction::OpenCommitComposer => update(state, Message::OpenCommitComposer),
+        MenuAction::SearchDiff => open_diff_search(state),
+        MenuAction::SwitchToHistoryTab => {
             update(state, Message::SwitchSidebarTab(SidebarTab::History))
         }
-        ActionsSurfaceCommand::SwitchToChangesTab => {
+        MenuAction::SwitchToChangesTab => {
             update(state, Message::SwitchSidebarTab(SidebarTab::Changes))
         }
-        ActionsSurfaceCommand::CopyCommitHash => {
+        MenuAction::CopyCommitHash => {
             let Some(commit) = state.history_commit_header.as_ref() else {
-                return Some(Task::none());
+                return Task::none();
             };
             update(state, Message::CopyCommitHash(commit.hash.clone()))
         }
-    };
-
-    Some(task)
+        MenuAction::Push => {
+            let repo = state.repo_path.clone();
+            Task::perform(
+                async move { actions_mod::git_push(repo) },
+                Message::GitOperationFinished,
+            )
+        }
+        MenuAction::Pull => {
+            let repo = state.repo_path.clone();
+            Task::perform(
+                async move { actions_mod::git_pull(repo) },
+                Message::GitOperationFinished,
+            )
+        }
+    }
 }
 
 fn open_diff_search(state: &mut State) -> Task<Message> {

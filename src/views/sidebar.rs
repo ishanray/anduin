@@ -9,6 +9,8 @@ use iced::widget::{
 };
 use iced::{Element, Fill, Length, Theme};
 
+pub(crate) const PICKER_ROW_HEIGHT: f32 = 32.0;
+
 pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
     let theme = state.app_theme();
     let palette = theme.extended_palette();
@@ -581,6 +583,39 @@ fn view_commit_list(state: &State) -> Element<'_, Message> {
         .into()
 }
 
+fn view_picker_dropdown<'a>(
+    input: Element<'a, Message>,
+    list: Element<'a, Message>,
+    error: Option<Element<'a, Message>>,
+    bg: iced::Color,
+    border_color: iced::Color,
+) -> Element<'a, Message> {
+    let mut content = column![input, rule::horizontal(1), list].spacing(0);
+
+    if let Some(err) = error {
+        content = content.push(err);
+    }
+
+    container(content)
+        .width(Fill)
+        .max_height(300.0)
+        .style(move |_: &Theme| {
+            container::Style::default()
+                .background(bg)
+                .border(iced::Border {
+                    color: border_color,
+                    width: 1.0,
+                    radius: 8.0.into(),
+                })
+                .shadow(iced::Shadow {
+                    color: iced::Color::BLACK.scale_alpha(0.15),
+                    offset: iced::Vector::new(0.0, 4.0),
+                    blur_radius: 12.0,
+                })
+        })
+        .into()
+}
+
 fn view_branch_picker(state: &State) -> Element<'_, Message> {
     let theme = state.app_theme();
     let palette = theme.extended_palette();
@@ -637,6 +672,7 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
             mouse_area(
                 container(row_content)
                     .width(Fill)
+                    .height(PICKER_ROW_HEIGHT)
                     .padding([6, 12])
                     .style(move |_: &Theme| container::Style::default().background(create_bg)),
             )
@@ -674,6 +710,7 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
             mouse_area(
                 container(row_content)
                     .width(Fill)
+                    .height(PICKER_ROW_HEIGHT)
                     .padding([6, 12])
                     .style(move |_: &Theme| container::Style::default().background(item_bg)),
             )
@@ -690,34 +727,26 @@ fn view_branch_picker(state: &State) -> Element<'_, Message> {
             .into()
     } else {
         scrollable(column(all_items).spacing(2))
+            .id(picker.scroll_id.clone())
+            .on_scroll(|viewport| {
+                Message::BranchPickerScrolled(
+                    viewport.absolute_offset().y,
+                    viewport.bounds().height,
+                )
+            })
             .height(iced::Length::Shrink)
             .into()
     };
 
-    let mut content = column![input, rule::horizontal(1), branch_list].spacing(0);
+    let error_element = picker.error.as_ref().map(|error| {
+        container(text(error.as_str()).size(12).font(MONO).color(danger_color))
+            .padding([8, 12])
+            .width(Fill)
+            .style(move |_: &Theme| container::Style::default().background(danger_bg))
+            .into()
+    });
 
-    if let Some(error) = picker.error.as_ref() {
-        content = content.push(
-            container(text(error.as_str()).size(12).font(MONO).color(danger_color))
-                .padding([8, 12])
-                .width(Fill)
-                .style(move |_: &Theme| container::Style::default().background(danger_bg)),
-        );
-    }
-
-    container(content)
-        .width(Fill)
-        .max_height(300.0)
-        .style(move |_: &Theme| {
-            container::Style::default()
-                .background(bg)
-                .border(iced::Border {
-                    color: border_color,
-                    width: 1.0,
-                    radius: 8.0.into(),
-                })
-        })
-        .into()
+    view_picker_dropdown(input.into(), branch_list, error_element, bg, border_color)
 }
 
 fn view_project_picker(state: &State) -> Element<'_, Message> {
@@ -761,6 +790,7 @@ fn view_project_picker(state: &State) -> Element<'_, Message> {
             mouse_area(
                 container(row_content)
                     .width(Fill)
+                    .height(PICKER_ROW_HEIGHT)
                     .padding([6, 12])
                     .style(move |_: &Theme| container::Style::default().background(item_bg)),
             )
@@ -775,25 +805,18 @@ fn view_project_picker(state: &State) -> Element<'_, Message> {
             .into()
     } else {
         scrollable(column(repo_items).spacing(2))
+            .id(picker.scroll_id.clone())
+            .on_scroll(|viewport| {
+                Message::ProjectPickerScrolled(
+                    viewport.absolute_offset().y,
+                    viewport.bounds().height,
+                )
+            })
             .height(iced::Length::Shrink)
             .into()
     };
 
-    let content = column![input, rule::horizontal(1), repo_list].spacing(0);
-
-    container(content)
-        .width(Fill)
-        .max_height(300.0)
-        .style(move |_: &Theme| {
-            container::Style::default()
-                .background(bg)
-                .border(iced::Border {
-                    color: border_color,
-                    width: 1.0,
-                    radius: 8.0.into(),
-                })
-        })
-        .into()
+    view_picker_dropdown(input.into(), repo_list, None, bg, border_color)
 }
 
 pub(crate) fn selected_sidebar_row_bounds(state: &State) -> Option<(f32, f32)> {
