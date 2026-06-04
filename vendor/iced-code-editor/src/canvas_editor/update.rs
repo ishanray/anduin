@@ -34,6 +34,7 @@ impl CodeEditor {
         // to change on edits, so `wrapping_add` is sufficient and overflow-safe.
         self.buffer_revision = self.buffer_revision.wrapping_add(1);
         *self.visual_lines_cache.borrow_mut() = None;
+        *self.highlighted_diff_cache.borrow_mut() = None;
         self.content_cache.clear();
         self.overlay_cache.clear();
     }
@@ -1314,7 +1315,7 @@ impl CodeEditor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::canvas_editor::ArrowDirection;
+    use crate::canvas_editor::{ArrowDirection, Instant};
 
     #[test]
     fn test_canvas_focus_lost() {
@@ -1638,7 +1639,7 @@ mod tests {
         editor.viewport_width = 800.0;
         editor.target_viewport_scroll = 240.0;
         editor.last_smooth_scroll_frame =
-            super::Instant::now() - std::time::Duration::from_millis(16);
+            Instant::now() - std::time::Duration::from_millis(16);
 
         let next = editor.smooth_scroll_step(editor.target_viewport_scroll);
 

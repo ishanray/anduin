@@ -4,6 +4,7 @@ use crate::app::{
 use crate::git;
 use iced::Task;
 use iced_code_editor::Message as EditorMessage;
+use std::path::Path;
 use std::sync::Arc;
 
 pub(crate) fn handle_diff_loaded(
@@ -33,6 +34,13 @@ pub(crate) fn handle_diff_loaded(
 
             if patch_changed {
                 if let Some(current_diff) = state.current_diff.as_ref() {
+                    // Set syntax highlighting for code content within the diff
+                    let ext = Path::new(&current_diff.path)
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .filter(|e| !e.is_empty());
+                    state.diff_editor.set_diff_content_syntax(ext);
+
                     let jump_line = state
                         .pending_diff_jump
                         .as_ref()

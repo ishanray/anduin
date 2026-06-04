@@ -4,8 +4,10 @@ use iced::advanced::input_method;
 use iced::mouse;
 use iced::widget::canvas::{self, Geometry};
 use iced::{Color, Event, Point, Rectangle, Size, Theme, keyboard};
+use std::borrow::Cow;
+use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Style, ThemeSet};
 use syntect::parsing::SyntaxSet;
@@ -64,11 +66,16 @@ fn calculate_segment_geometry(
 }
 
 use super::wrapping::{VisualLine, WrappingCalculator};
-use super::{ArrowDirection, CodeEditor, Message, measure_text_width};
+use super::{
+    ArrowDirection, CodeEditor, HighlightedDiffCache, HighlightedDiffCacheKey,
+    HighlightedDiffLine, HighlightedDiffSpan, Message, measure_text_width,
+};
 use iced::widget::canvas::Action;
 
 static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
 static THEME_SET: OnceLock<ThemeSet> = OnceLock::new();
+static DIFF_SYNTAX_INDEX_CACHE: OnceLock<Mutex<HashMap<String, Option<usize>>>> =
+    OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
 enum DiffLineKind {
@@ -80,6 +87,30 @@ enum DiffLineKind {
 
 fn is_light_background(color: Color) -> bool {
     (color.r + color.g + color.b) / 3.0 > 0.5
+}
+
+fn blend_color(color1: Color, color2: Color, factor: f32) -> Color {
+    Color {
+        r: color1.r + (color2.r - color1.r) * factor,
+        g: color1.g + (color2.g - color1.g) * factor,
+        b: color1.b + (color2.b - color1.b) * factor,
+        a: color1.a + (color2.a - color1.a) * factor,
+    }
+}
+
+fn soften_diff_background(
+    background: Option<Color>,
+    editor_background: Color,
+    is_light: bool,
+) -> Option<Color> {
+    background.map(|color| {
+        let blend_factor = if is_light {
+            0.68
+        } else {
+            0.18
+        };
+        blend_color(color, editor_background, blend_factor)
+    })
 }
 
 fn github_diff_colors(
@@ -138,6 +169,100 @@ fn github_diff_line_kind(line: &str) -> Option<DiffLineKind> {
     } else {
         None
     }
+}
+
+fn diff_code_prefix(line: &str) -> Option<(char, Option<DiffLineKind>)> {
+    let prefix = line.chars().next()?;
+
+    match prefix {
+        '+' => Some((prefix, Some(DiffLineKind::Addition))),
+        '-' => Some((prefix, Some(DiffLineKind::Deletion))),
+        ' ' => Some((prefix, None)),
+        _ => None,
+    }
+}
+
+fn normalize_diff_syntax(ext: &str) -> Option<Cow<'static, str>> {
+    let ext = ext.trim().trim_start_matches('.');
+    if ext.is_empty() {
+        return None;
+    }
+
+    let lower = ext.to_ascii_lowercase();
+    match lower.as_str() {
+        "rust" => Some(Cow::Borrowed("rs")),
+        "python" => Some(Cow::Borrowed("py")),
+        "javascript" | "jsx" => Some(Cow::Borrowed("js")),
+        "typescript" | "tsx" => Some(Cow::Borrowed("ts")),
+        "htm" => Some(Cow::Borrowed("html")),
+        "svg" => Some(Cow::Borrowed("xml")),
+        "markdown" => Some(Cow::Borrowed("md")),
+        "text" | "txt" | "plain" => Some(Cow::Borrowed("text")),
+        "rs" | "py" | "js" | "ts" | "html" | "md" | "xml" => {
+            Some(Cow::Owned(lower))
+        }
+        _ => Some(Cow::Owned(lower)),
+    }
+}
+
+fn resolve_diff_content_syntax<'a>(
+    syntax_set: &'a SyntaxSet,
+    normalized_ext: &str,
+) -> &'a syntect::parsing::SyntaxReference {
+    if normalized_ext == "text" {
+        return syntax_set.find_syntax_plain_text();
+    }
+
+    let cache = DIFF_SYNTAX_INDEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(cache) = cache.lock()
+        && let Some(index) = cache.get(normalized_ext)
+    {
+        return index
+            .and_then(|index| syntax_set.syntaxes().get(index))
+            .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
+    }
+
+    let resolved_index = syntax_set
+        .syntaxes()
+        .iter()
+        .rposition(|syntax| {
+            syntax
+                .file_extensions
+                .iter()
+                .any(|ext| ext.eq_ignore_ascii_case(normalized_ext))
+        });
+
+    if let Ok(mut cache) = cache.lock() {
+        cache.insert(normalized_ext.to_owned(), resolved_index);
+    }
+
+    resolved_index
+        .and_then(|index| syntax_set.syntaxes().get(index))
+        .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
+}
+
+fn color_from_syntect_style(style: Style, fallback: Color) -> Color {
+    if style.foreground.a == 0 {
+        return fallback;
+    }
+
+    Color::from_rgb(
+        f32::from(style.foreground.r) / 255.0,
+        f32::from(style.foreground.g) / 255.0,
+        f32::from(style.foreground.b) / 255.0,
+    )
+}
+
+fn char_slice(text: &str, start_col: usize, end_col: usize) -> &str {
+    let start_byte = text
+        .char_indices()
+        .nth(start_col)
+        .map_or(text.len(), |(idx, _)| idx);
+    let end_byte = text
+        .char_indices()
+        .nth(end_col)
+        .map_or(text.len(), |(idx, _)| idx);
+    &text[start_byte..end_byte]
 }
 
 /// Context for canvas rendering operations.
@@ -239,6 +364,201 @@ impl CodeEditor {
         }
     }
 
+    fn highlighted_diff_cache_key(
+        &self,
+        syntax_theme_name: &'static str,
+    ) -> HighlightedDiffCacheKey {
+        HighlightedDiffCacheKey {
+            buffer_revision: self.buffer_revision,
+            diff_content_syntax: self
+                .diff_content_syntax
+                .as_deref()
+                .and_then(normalize_diff_syntax)
+                .map(Cow::into_owned),
+            syntax_theme_name,
+        }
+    }
+
+    fn ensure_highlighted_diff_cache(
+        &self,
+        syntax_set: &SyntaxSet,
+        syntax_theme_name: &'static str,
+        syntax_theme: Option<&syntect::highlighting::Theme>,
+    ) {
+        let key = self.highlighted_diff_cache_key(syntax_theme_name);
+        if self
+            .highlighted_diff_cache
+            .borrow()
+            .as_ref()
+            .is_some_and(|cache| cache.key == key)
+        {
+            return;
+        }
+
+        let Some(syntax_theme) = syntax_theme else {
+            *self.highlighted_diff_cache.borrow_mut() =
+                Some(HighlightedDiffCache {
+                    key,
+                    lines: vec![
+                        HighlightedDiffLine::default();
+                        self.buffer.line_count()
+                    ],
+                });
+            return;
+        };
+
+        let Some(normalized_ext) = key.diff_content_syntax.as_deref() else {
+            *self.highlighted_diff_cache.borrow_mut() =
+                Some(HighlightedDiffCache {
+                    key,
+                    lines: vec![
+                        HighlightedDiffLine::default();
+                        self.buffer.line_count()
+                    ],
+                });
+            return;
+        };
+
+        let content_syntax =
+            resolve_diff_content_syntax(syntax_set, normalized_ext);
+        let mut highlighter = HighlightLines::new(content_syntax, syntax_theme);
+        let mut lines = Vec::with_capacity(self.buffer.line_count());
+
+        for line_index in 0..self.buffer.line_count() {
+            let line = self.buffer.line(line_index);
+
+            if matches!(
+                github_diff_line_kind(line),
+                Some(DiffLineKind::Hunk | DiffLineKind::Meta)
+            ) {
+                highlighter =
+                    HighlightLines::new(content_syntax, syntax_theme);
+                lines.push(HighlightedDiffLine::default());
+                continue;
+            }
+
+            let Some((_prefix, _kind)) = diff_code_prefix(line) else {
+                lines.push(HighlightedDiffLine::default());
+                continue;
+            };
+
+            let code_content = line.get(1..).unwrap_or("");
+            let ranges = highlighter
+                .highlight_line(code_content, syntax_set)
+                .unwrap_or_else(|_| vec![(Style::default(), code_content)]);
+            let mut spans = Vec::with_capacity(ranges.len());
+            let mut start_col = 0;
+
+            for (style, text) in ranges {
+                let text_len = text.chars().count();
+                if text_len > 0 {
+                    spans.push(HighlightedDiffSpan {
+                        start_col,
+                        end_col: start_col + text_len,
+                        color: color_from_syntect_style(
+                            style,
+                            self.style.text_color,
+                        ),
+                    });
+                }
+                start_col += text_len;
+            }
+
+            lines.push(HighlightedDiffLine { spans });
+        }
+
+        *self.highlighted_diff_cache.borrow_mut() =
+            Some(HighlightedDiffCache { key, lines });
+    }
+
+    fn draw_diff_code_line(
+        &self,
+        frame: &mut canvas::Frame,
+        ctx: &RenderContext,
+        visual_line: &VisualLine,
+        y: f32,
+        line: &str,
+        prefix: char,
+        diff_kind: Option<DiffLineKind>,
+        highlighted_line: Option<&HighlightedDiffLine>,
+    ) {
+        let base_x = ctx.gutter_width + 5.0;
+        let prefix_width = measure_text_width(
+            &prefix.to_string(),
+            ctx.full_char_width,
+            ctx.char_width,
+        );
+
+        if visual_line.start_col == 0 {
+            let is_light = is_light_background(self.style.background);
+            let prefix_color = diff_kind.map_or(self.style.text_color, |kind| {
+                github_diff_colors(kind, is_light).1
+            });
+            frame.fill_text(canvas::Text {
+                content: prefix.to_string(),
+                position: Point::new(base_x, y + 2.0),
+                color: prefix_color,
+                size: ctx.font_size.into(),
+                font: ctx.font,
+                ..canvas::Text::default()
+            });
+        }
+
+        let code_content = line.get(1..).unwrap_or("");
+        let mut x_offset = base_x
+            + if visual_line.start_col == 0 {
+                prefix_width
+            } else {
+                0.0
+            };
+        let segment_code_start = visual_line.start_col.saturating_sub(1);
+        let segment_code_end = visual_line.end_col.saturating_sub(1);
+
+        if let Some(highlighted_line) =
+            highlighted_line.filter(|line| !line.spans.is_empty())
+        {
+            for span in &highlighted_line.spans {
+                if span.end_col <= segment_code_start
+                    || span.start_col >= segment_code_end
+                {
+                    continue;
+                }
+
+                let slice_start = segment_code_start.max(span.start_col);
+                let slice_end = segment_code_end.min(span.end_col);
+                let segment_text =
+                    char_slice(code_content, slice_start, slice_end);
+
+                frame.fill_text(canvas::Text {
+                    content: segment_text.to_owned(),
+                    position: Point::new(x_offset, y + 2.0),
+                    color: span.color,
+                    size: ctx.font_size.into(),
+                    font: ctx.font,
+                    ..canvas::Text::default()
+                });
+
+                x_offset += measure_text_width(
+                    segment_text,
+                    ctx.full_char_width,
+                    ctx.char_width,
+                );
+            }
+            return;
+        }
+
+        let visible_code =
+            char_slice(code_content, segment_code_start, segment_code_end);
+        frame.fill_text(canvas::Text {
+            content: visible_code.to_owned(),
+            position: Point::new(x_offset, y + 2.0),
+            color: self.style.text_color,
+            size: ctx.font_size.into(),
+            font: ctx.font,
+            ..canvas::Text::default()
+        });
+    }
+
     /// Draws text content with syntax highlighting or plain text fallback.
     ///
     /// # Arguments
@@ -260,6 +580,7 @@ impl CodeEditor {
         syntax_ref: Option<&syntect::parsing::SyntaxReference>,
         syntax_set: &SyntaxSet,
         syntax_theme: Option<&syntect::highlighting::Theme>,
+        highlighted_diff_cache: Option<&HighlightedDiffCache>,
     ) {
         let full_line_content = self.buffer.line(visual_line.logical_line);
 
@@ -279,6 +600,8 @@ impl CodeEditor {
 
             if let Some(kind) = github_diff_line_kind(full_line_content) {
                 let (background, foreground) = github_diff_colors(kind, is_light);
+                let background =
+                    soften_diff_background(background, self.style.background, is_light);
 
                 if let Some(background) = background {
                     frame.fill_rectangle(
@@ -291,6 +614,25 @@ impl CodeEditor {
                     );
                 }
 
+                if let Some((prefix, diff_kind)) =
+                    diff_code_prefix(full_line_content)
+                {
+                    let highlighted_line = highlighted_diff_cache.and_then(
+                        |cache| cache.lines.get(visual_line.logical_line),
+                    );
+                    self.draw_diff_code_line(
+                        frame,
+                        ctx,
+                        visual_line,
+                        y,
+                        full_line_content,
+                        prefix,
+                        diff_kind,
+                        highlighted_line,
+                    );
+                    return;
+                }
+
                 frame.fill_text(canvas::Text {
                     content: line_segment.to_string(),
                     position: Point::new(ctx.gutter_width + 5.0, y + 2.0),
@@ -299,6 +641,21 @@ impl CodeEditor {
                     font: ctx.font,
                     ..canvas::Text::default()
                 });
+            } else if let Some((prefix, diff_kind)) =
+                diff_code_prefix(full_line_content)
+            {
+                let highlighted_line = highlighted_diff_cache
+                    .and_then(|cache| cache.lines.get(visual_line.logical_line));
+                self.draw_diff_code_line(
+                    frame,
+                    ctx,
+                    visual_line,
+                    y,
+                    full_line_content,
+                    prefix,
+                    diff_kind,
+                    highlighted_line,
+                );
             } else {
                 frame.fill_text(canvas::Text {
                     content: line_segment.to_string(),
@@ -1458,6 +1815,21 @@ impl canvas::Program<Message> for CodeEditor {
                 }
                 .or(Some(syntax_set.find_syntax_plain_text()));
 
+                if self.syntax == "diff" {
+                    self.ensure_highlighted_diff_cache(
+                        syntax_set,
+                        preferred_syntax_theme,
+                        syntax_theme,
+                    );
+                }
+                let highlighted_diff_cache_ref =
+                    self.highlighted_diff_cache.borrow();
+                let highlighted_diff_cache = if self.syntax == "diff" {
+                    highlighted_diff_cache_ref.as_ref()
+                } else {
+                    None
+                };
+
                 let ctx = RenderContext {
                     visual_lines: visual_lines_for_content.as_ref(),
                     bounds_width: bounds.width,
@@ -1486,6 +1858,7 @@ impl canvas::Program<Message> for CodeEditor {
                         syntax_ref,
                         syntax_set,
                         syntax_theme,
+                        highlighted_diff_cache,
                     );
                 }
             });
@@ -1819,6 +2192,153 @@ mod tests {
             (w - expected_w).abs() < f32::EPSILON,
             "Width for inverted range"
         );
+    }
+
+    fn syntax_test_inputs() -> (
+        &'static SyntaxSet,
+        &'static str,
+        Option<&'static syntect::highlighting::Theme>,
+    ) {
+        let syntax_set = SYNTAX_SET.get_or_init(SyntaxSet::load_defaults_newlines);
+        let theme_set = THEME_SET.get_or_init(ThemeSet::load_defaults);
+        let theme_name = "base16-ocean.dark";
+        let syntax_theme = theme_set
+            .themes
+            .get(theme_name)
+            .or_else(|| theme_set.themes.values().next());
+
+        (syntax_set, theme_name, syntax_theme)
+    }
+
+    #[test]
+    fn test_diff_metadata_lines_are_not_code_highlighted() {
+        let mut editor = CodeEditor::new(
+            "diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n+fn main() {}",
+            "diff",
+        );
+        editor.set_diff_content_syntax(Some("rs"));
+        let (syntax_set, theme_name, syntax_theme) = syntax_test_inputs();
+
+        editor.ensure_highlighted_diff_cache(
+            syntax_set,
+            theme_name,
+            syntax_theme,
+        );
+
+        if let Some(cache) = editor.highlighted_diff_cache.borrow().as_ref() {
+            for line in cache.lines.iter().take(5) {
+                assert!(
+                    line.spans.is_empty(),
+                    "diff metadata must not receive code token spans"
+                );
+            }
+            assert!(
+                cache
+                    .lines
+                    .get(5)
+                    .is_some_and(|line| !line.spans.is_empty()),
+                "code diff lines should receive syntax spans"
+            );
+        } else {
+            assert!(false, "highlighted diff cache should be populated");
+        }
+    }
+
+    #[test]
+    fn test_diff_code_lines_strip_only_the_prefix() {
+        let mut editor = CodeEditor::new(
+            "+fn added() {}\n-fn removed() {}\n fn context() {}",
+            "diff",
+        );
+        editor.set_diff_content_syntax(Some("rust"));
+        let (syntax_set, theme_name, syntax_theme) = syntax_test_inputs();
+
+        editor.ensure_highlighted_diff_cache(
+            syntax_set,
+            theme_name,
+            syntax_theme,
+        );
+
+        if let Some(cache) = editor.highlighted_diff_cache.borrow().as_ref() {
+            for (line_index, expected_len) in [
+                "fn added() {}".chars().count(),
+                "fn removed() {}".chars().count(),
+                "fn context() {}".chars().count(),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let Some(line) = cache.lines.get(line_index) else {
+                    assert!(false, "missing highlighted diff line");
+                    return;
+                };
+                let first_start = line.spans.first().map(|span| span.start_col);
+                let last_end = line.spans.last().map(|span| span.end_col);
+                assert_eq!(first_start, Some(0));
+                assert_eq!(last_end, Some(expected_len));
+            }
+        } else {
+            assert!(false, "highlighted diff cache should be populated");
+        }
+    }
+
+    #[test]
+    fn test_diff_syntax_alias_normalization() {
+        assert_eq!(normalize_diff_syntax("rust").as_deref(), Some("rs"));
+        assert_eq!(normalize_diff_syntax("python").as_deref(), Some("py"));
+        assert_eq!(normalize_diff_syntax("javascript").as_deref(), Some("js"));
+        assert_eq!(normalize_diff_syntax("jsx").as_deref(), Some("js"));
+        assert_eq!(normalize_diff_syntax("typescript").as_deref(), Some("ts"));
+        assert_eq!(normalize_diff_syntax("tsx").as_deref(), Some("ts"));
+        assert_eq!(normalize_diff_syntax("htm").as_deref(), Some("html"));
+        assert_eq!(normalize_diff_syntax("markdown").as_deref(), Some("md"));
+        assert_eq!(normalize_diff_syntax("svg").as_deref(), Some("xml"));
+        assert_eq!(normalize_diff_syntax("text").as_deref(), Some("text"));
+        assert_eq!(normalize_diff_syntax(".RS").as_deref(), Some("rs"));
+    }
+
+    #[test]
+    fn test_diff_highlight_cache_invalidates_on_content_syntax_and_theme() {
+        let mut editor = CodeEditor::new("+fn main() {}", "diff");
+        editor.set_diff_content_syntax(Some("rs"));
+        let (syntax_set, theme_name, syntax_theme) = syntax_test_inputs();
+
+        editor.ensure_highlighted_diff_cache(
+            syntax_set,
+            theme_name,
+            syntax_theme,
+        );
+        assert!(editor.highlighted_diff_cache.borrow().is_some());
+
+        editor.set_diff_content_syntax(Some("py"));
+        assert!(editor.highlighted_diff_cache.borrow().is_none());
+
+        editor.ensure_highlighted_diff_cache(
+            syntax_set,
+            theme_name,
+            syntax_theme,
+        );
+        assert!(editor.highlighted_diff_cache.borrow().is_some());
+
+        editor.set_theme(crate::theme::from_iced_theme(&iced::Theme::Light));
+        assert!(editor.highlighted_diff_cache.borrow().is_none());
+    }
+
+    #[test]
+    fn test_diff_highlight_cache_invalidates_on_buffer_reset() {
+        let mut editor = CodeEditor::new("+fn main() {}", "diff");
+        editor.set_diff_content_syntax(Some("rs"));
+        let (syntax_set, theme_name, syntax_theme) = syntax_test_inputs();
+
+        editor.ensure_highlighted_diff_cache(
+            syntax_set,
+            theme_name,
+            syntax_theme,
+        );
+        assert!(editor.highlighted_diff_cache.borrow().is_some());
+
+        let _task = editor.reset("+fn changed() {}");
+        assert!(editor.highlighted_diff_cache.borrow().is_none());
     }
 
     #[test]

@@ -161,6 +161,10 @@ pub struct CodeEditor {
     pub(crate) style: Style,
     /// Syntax highlighting language
     pub(crate) syntax: String,
+    /// File extension for syntax highlighting code content within diff lines.
+    /// When `syntax` is "diff" and this is set (e.g., "rs", "py"), the code
+    /// inside +/- lines will be syntax-highlighted with the appropriate language.
+    pub(crate) diff_content_syntax: Option<String>,
     /// Last cursor blink time
     pub(crate) last_blink: Instant,
     /// Cursor visible state
@@ -269,6 +273,11 @@ pub struct CodeEditor {
     /// rendering (where we only have `&self`), but we still want to memoize the
     /// expensive computation without forcing external mutability.
     visual_lines_cache: RefCell<Option<VisualLinesCache>>,
+    /// Cached syntax-highlighted spans for diff code lines.
+    ///
+    /// Diff rendering strips the leading diff marker before highlighting code,
+    /// then reuses these logical-line spans for any wrapped visual segments.
+    pub(crate) highlighted_diff_cache: RefCell<Option<HighlightedDiffCache>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -288,6 +297,31 @@ struct VisualLinesKey {
 struct VisualLinesCache {
     key: VisualLinesKey,
     visual_lines: Rc<Vec<wrapping::VisualLine>>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct HighlightedDiffCacheKey {
+    pub(crate) buffer_revision: u64,
+    pub(crate) diff_content_syntax: Option<String>,
+    pub(crate) syntax_theme_name: &'static str,
+}
+
+#[derive(Clone)]
+pub(crate) struct HighlightedDiffCache {
+    pub(crate) key: HighlightedDiffCacheKey,
+    pub(crate) lines: Vec<HighlightedDiffLine>,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct HighlightedDiffLine {
+    pub(crate) spans: Vec<HighlightedDiffSpan>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct HighlightedDiffSpan {
+    pub(crate) start_col: usize,
+    pub(crate) end_col: usize,
+    pub(crate) color: iced::Color,
 }
 
 /// Messages emitted by the code editor
@@ -415,6 +449,7 @@ impl CodeEditor {
             scroll_offset: 0.0,
             style: crate::theme::from_iced_theme(&iced::Theme::TokyoNightStorm),
             syntax: syntax.to_string(),
+            diff_content_syntax: None,
             last_blink: Instant::now(),
             cursor_visible: true,
             selection_start: None,
@@ -455,6 +490,7 @@ impl CodeEditor {
             cache_window_end_line: 0,
             buffer_revision: 0,
             visual_lines_cache: RefCell::new(None),
+            highlighted_diff_cache: RefCell::new(None),
         };
 
         // Perform initial character dimension calculation
@@ -631,6 +667,26 @@ impl CodeEditor {
         self.style = style;
         self.content_cache.clear();
         self.overlay_cache.clear();
+        *self.highlighted_diff_cache.borrow_mut() = None;
+    }
+
+    /// Sets the file extension for syntax highlighting code content within diff lines.
+    ///
+    /// When the editor is in diff mode (`syntax` is "diff") and this is set to
+    /// `Some("rs")`, `Some("py")`, etc., the code content inside `+` and `-`
+    /// lines will be syntax-highlighted with the appropriate language, while
+    /// preserving the diff-specific background colors.
+    ///
+    /// # Arguments
+    ///
+    /// * `ext` - File extension (e.g., "rs", "py", "js") or `None` to disable
+    pub fn set_diff_content_syntax(&mut self, ext: Option<&str>) {
+        let new_val = ext.map(|s| s.to_string());
+        if self.diff_content_syntax != new_val {
+            self.diff_content_syntax = new_val;
+            *self.highlighted_diff_cache.borrow_mut() = None;
+            self.content_cache.clear();
+        }
     }
 
     /// Sets the language for UI translations.
@@ -764,6 +820,7 @@ impl CodeEditor {
         self.overlay_cache = canvas::Cache::default();
         self.buffer_revision = self.buffer_revision.wrapping_add(1);
         *self.visual_lines_cache.borrow_mut() = None;
+        *self.highlighted_diff_cache.borrow_mut() = None;
 
         // Reset the cache window so the canvas renders lines around the new
         // viewport (line 0) instead of the old file's window range.
@@ -798,6 +855,7 @@ impl CodeEditor {
         self.overlay_cache = canvas::Cache::default();
         self.buffer_revision = self.buffer_revision.wrapping_add(1);
         *self.visual_lines_cache.borrow_mut() = None;
+        *self.highlighted_diff_cache.borrow_mut() = None;
 
         self.cache_window_start_line = 0;
         self.cache_window_end_line = 0;

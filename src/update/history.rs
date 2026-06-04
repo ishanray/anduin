@@ -6,6 +6,7 @@ use crate::app::{
 };
 use crate::git::diff::{ChangedFile, FileDiff};
 use iced::Task;
+use std::path::Path;
 
 const COMMITS_PER_PAGE: usize = 50;
 
@@ -147,6 +148,14 @@ pub(crate) fn handle_history_diff_loaded(
     match result {
         Ok(diff) => {
             state.diff_editor.lose_focus();
+
+            // Set syntax highlighting for code content within the diff
+            let ext = Path::new(&diff.path)
+                .extension()
+                .and_then(|e| e.to_str())
+                .filter(|e| !e.is_empty());
+            state.diff_editor.set_diff_content_syntax(ext);
+
             let task = state
                 .diff_editor
                 .reset(&diff.raw_patch)
