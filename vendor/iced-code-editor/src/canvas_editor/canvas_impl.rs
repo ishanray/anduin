@@ -100,17 +100,35 @@ fn blend_color(color1: Color, color2: Color, factor: f32) -> Color {
 
 fn soften_diff_background(
     background: Option<Color>,
+    kind: DiffLineKind,
     editor_background: Color,
     is_light: bool,
 ) -> Option<Color> {
     background.map(|color| {
-        let blend_factor = if is_light {
-            0.68
-        } else {
-            0.18
+        let blend_factor = match (kind, is_light) {
+            (DiffLineKind::Addition | DiffLineKind::Deletion, true) => 0.72,
+            (DiffLineKind::Addition | DiffLineKind::Deletion, false) => 0.68,
+            (DiffLineKind::Hunk, true) => 0.42,
+            (DiffLineKind::Hunk, false) => 0.52,
+            (DiffLineKind::Meta, _) => 1.0,
         };
         blend_color(color, editor_background, blend_factor)
     })
+}
+
+fn readable_diff_token_color(
+    color: Color,
+    diff_kind: Option<DiffLineKind>,
+    editor_text_color: Color,
+    is_light: bool,
+) -> Color {
+    match diff_kind {
+        Some(DiffLineKind::Addition | DiffLineKind::Deletion) => {
+            let blend_factor = if is_light { 0.18 } else { 0.42 };
+            blend_color(color, editor_text_color, blend_factor)
+        }
+        _ => color,
+    }
 }
 
 fn github_diff_colors(
@@ -192,13 +210,13 @@ fn normalize_diff_syntax(ext: &str) -> Option<Cow<'static, str>> {
     match lower.as_str() {
         "rust" => Some(Cow::Borrowed("rs")),
         "python" => Some(Cow::Borrowed("py")),
-        "javascript" | "jsx" => Some(Cow::Borrowed("js")),
-        "typescript" | "tsx" => Some(Cow::Borrowed("ts")),
+        "javascript" => Some(Cow::Borrowed("js")),
+        "typescript" => Some(Cow::Borrowed("ts")),
         "htm" => Some(Cow::Borrowed("html")),
         "svg" => Some(Cow::Borrowed("xml")),
         "markdown" => Some(Cow::Borrowed("md")),
         "text" | "txt" | "plain" => Some(Cow::Borrowed("text")),
-        "rs" | "py" | "js" | "ts" | "html" | "md" | "xml" => {
+        "rs" | "py" | "js" | "jsx" | "ts" | "tsx" | "html" | "md" | "xml" => {
             Some(Cow::Owned(lower))
         }
         _ => Some(Cow::Owned(lower)),
@@ -223,13 +241,23 @@ fn resolve_diff_content_syntax<'a>(
     }
 
     let resolved_index = syntax_set
-        .syntaxes()
-        .iter()
-        .rposition(|syntax| {
-            syntax
-                .file_extensions
+        .find_syntax_by_token(normalized_ext)
+        .and_then(|resolved| {
+            syntax_set
+                .syntaxes()
                 .iter()
-                .any(|ext| ext.eq_ignore_ascii_case(normalized_ext))
+                .rposition(|syntax| std::ptr::eq(syntax, resolved))
+        })
+        .or_else(|| {
+            syntax_set
+                .syntaxes()
+                .iter()
+                .rposition(|syntax| {
+                    syntax
+                        .file_extensions
+                        .iter()
+                        .any(|ext| ext.eq_ignore_ascii_case(normalized_ext))
+                })
         });
 
     if let Ok(mut cache) = cache.lock() {
@@ -517,6 +545,7 @@ impl CodeEditor {
         if let Some(highlighted_line) =
             highlighted_line.filter(|line| !line.spans.is_empty())
         {
+            let is_light = is_light_background(self.style.background);
             for span in &highlighted_line.spans {
                 if span.end_col <= segment_code_start
                     || span.start_col >= segment_code_end
@@ -532,7 +561,12 @@ impl CodeEditor {
                 frame.fill_text(canvas::Text {
                     content: segment_text.to_owned(),
                     position: Point::new(x_offset, y + 2.0),
-                    color: span.color,
+                    color: readable_diff_token_color(
+                        span.color,
+                        diff_kind,
+                        self.style.text_color,
+                        is_light,
+                    ),
                     size: ctx.font_size.into(),
                     font: ctx.font,
                     ..canvas::Text::default()
@@ -600,8 +634,12 @@ impl CodeEditor {
 
             if let Some(kind) = github_diff_line_kind(full_line_content) {
                 let (background, foreground) = github_diff_colors(kind, is_light);
-                let background =
-                    soften_diff_background(background, self.style.background, is_light);
+                let background = soften_diff_background(
+                    background,
+                    kind,
+                    self.style.background,
+                    is_light,
+                );
 
                 if let Some(background) = background {
                     frame.fill_rectangle(
@@ -2287,14 +2325,33 @@ mod tests {
         assert_eq!(normalize_diff_syntax("rust").as_deref(), Some("rs"));
         assert_eq!(normalize_diff_syntax("python").as_deref(), Some("py"));
         assert_eq!(normalize_diff_syntax("javascript").as_deref(), Some("js"));
-        assert_eq!(normalize_diff_syntax("jsx").as_deref(), Some("js"));
+        assert_eq!(normalize_diff_syntax("jsx").as_deref(), Some("jsx"));
         assert_eq!(normalize_diff_syntax("typescript").as_deref(), Some("ts"));
-        assert_eq!(normalize_diff_syntax("tsx").as_deref(), Some("ts"));
+        assert_eq!(normalize_diff_syntax("tsx").as_deref(), Some("tsx"));
         assert_eq!(normalize_diff_syntax("htm").as_deref(), Some("html"));
         assert_eq!(normalize_diff_syntax("markdown").as_deref(), Some("md"));
         assert_eq!(normalize_diff_syntax("svg").as_deref(), Some("xml"));
         assert_eq!(normalize_diff_syntax("text").as_deref(), Some("text"));
         assert_eq!(normalize_diff_syntax(".RS").as_deref(), Some("rs"));
+    }
+
+    #[test]
+    fn test_diff_backgrounds_are_softened_for_readability() {
+        let editor_background = Color::from_rgb(0.051, 0.067, 0.090);
+        let Some(softened) = soften_diff_background(
+            Some(Color::from_rgb(0.020, 0.227, 0.086)),
+            DiffLineKind::Addition,
+            editor_background,
+            false,
+        ) else {
+            assert!(false, "addition background should be present");
+            return;
+        };
+
+        assert!(
+            softened.g < 0.14,
+            "dark addition background should be a subtle cue, not a saturated block"
+        );
     }
 
     #[test]
