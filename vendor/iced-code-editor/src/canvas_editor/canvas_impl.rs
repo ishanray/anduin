@@ -106,8 +106,8 @@ fn soften_diff_background(
 ) -> Option<Color> {
     background.map(|color| {
         let blend_factor = match (kind, is_light) {
-            (DiffLineKind::Addition | DiffLineKind::Deletion, true) => 0.86,
-            (DiffLineKind::Addition | DiffLineKind::Deletion, false) => 0.91,
+            (DiffLineKind::Addition | DiffLineKind::Deletion, true) => 0.94,
+            (DiffLineKind::Addition | DiffLineKind::Deletion, false) => 0.98,
             (DiffLineKind::Hunk, true) => 0.42,
             (DiffLineKind::Hunk, false) => 0.52,
             (DiffLineKind::Meta, _) => 1.0,
@@ -119,14 +119,9 @@ fn soften_diff_background(
 fn readable_diff_token_color(
     color: Color,
     diff_kind: Option<DiffLineKind>,
-    editor_text_color: Color,
-    is_light: bool,
 ) -> Color {
     match diff_kind {
-        Some(DiffLineKind::Addition | DiffLineKind::Deletion) => {
-            let blend_factor = if is_light { 0.06 } else { 0.10 };
-            blend_color(color, editor_text_color, blend_factor)
-        }
+        Some(DiffLineKind::Addition | DiffLineKind::Deletion) => color,
         _ => color,
     }
 }
@@ -545,7 +540,6 @@ impl CodeEditor {
         if let Some(highlighted_line) =
             highlighted_line.filter(|line| !line.spans.is_empty())
         {
-            let is_light = is_light_background(self.style.background);
             for span in &highlighted_line.spans {
                 if span.end_col <= segment_code_start
                     || span.start_col >= segment_code_end
@@ -564,8 +558,6 @@ impl CodeEditor {
                     color: readable_diff_token_color(
                         span.color,
                         diff_kind,
-                        self.style.text_color,
-                        is_light,
                     ),
                     size: ctx.font_size.into(),
                     font: ctx.font,
