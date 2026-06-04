@@ -1824,7 +1824,7 @@ impl canvas::Program<Message> for CodeEditor {
                 let preferred_syntax_theme = if background_brightness > 0.5 {
                     "base16-ocean.light"
                 } else {
-                    "base16-ocean.dark"
+                    "base16-eighties.dark"
                 };
                 let syntax_theme = theme_set
                     .themes
@@ -2231,7 +2231,7 @@ mod tests {
     ) {
         let syntax_set = SYNTAX_SET.get_or_init(SyntaxSet::load_defaults_newlines);
         let theme_set = THEME_SET.get_or_init(ThemeSet::load_defaults);
-        let theme_name = "base16-ocean.dark";
+        let theme_name = "base16-eighties.dark";
         let syntax_theme = theme_set
             .themes
             .get(theme_name)
@@ -2343,6 +2343,40 @@ mod tests {
         assert!(
             softened.g < 0.09,
             "dark addition background should be a subtle cue, not a saturated block"
+        );
+    }
+
+    #[test]
+    fn test_python_diff_highlighting_uses_distinct_token_colors() {
+        let mut editor = CodeEditor::new("-    return RequestAuth(\"Dover\")", "diff");
+        editor.set_diff_content_syntax(Some("py"));
+        let (syntax_set, theme_name, syntax_theme) = syntax_test_inputs();
+
+        editor.ensure_highlighted_diff_cache(
+            syntax_set,
+            theme_name,
+            syntax_theme,
+        );
+
+        let cache_ref = editor.highlighted_diff_cache.borrow();
+        let Some(cache) = cache_ref.as_ref() else {
+            assert!(false, "highlighted diff cache should be populated");
+            return;
+        };
+        let Some(line) = cache.lines.first() else {
+            assert!(false, "highlighted diff line should be present");
+            return;
+        };
+        let distinct_colors = line.spans.iter().fold(Vec::new(), |mut colors, span| {
+            if !colors.iter().any(|color| color == &span.color) {
+                colors.push(span.color);
+            }
+            colors
+        });
+
+        assert!(
+            distinct_colors.len() > 1,
+            "Python diff content should not be plain monochrome text"
         );
     }
 
