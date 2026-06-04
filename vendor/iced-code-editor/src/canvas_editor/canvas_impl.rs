@@ -106,8 +106,8 @@ fn soften_diff_background(
 ) -> Option<Color> {
     background.map(|color| {
         let blend_factor = match (kind, is_light) {
-            (DiffLineKind::Addition | DiffLineKind::Deletion, true) => 0.72,
-            (DiffLineKind::Addition | DiffLineKind::Deletion, false) => 0.68,
+            (DiffLineKind::Addition | DiffLineKind::Deletion, true) => 0.86,
+            (DiffLineKind::Addition | DiffLineKind::Deletion, false) => 0.91,
             (DiffLineKind::Hunk, true) => 0.42,
             (DiffLineKind::Hunk, false) => 0.52,
             (DiffLineKind::Meta, _) => 1.0,
@@ -124,7 +124,7 @@ fn readable_diff_token_color(
 ) -> Color {
     match diff_kind {
         Some(DiffLineKind::Addition | DiffLineKind::Deletion) => {
-            let blend_factor = if is_light { 0.18 } else { 0.42 };
+            let blend_factor = if is_light { 0.06 } else { 0.10 };
             blend_color(color, editor_text_color, blend_factor)
         }
         _ => color,
@@ -2349,7 +2349,7 @@ mod tests {
         };
 
         assert!(
-            softened.g < 0.14,
+            softened.g < 0.09,
             "dark addition background should be a subtle cue, not a saturated block"
         );
     }
