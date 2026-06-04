@@ -444,7 +444,6 @@ impl CodeEditor {
 
         let content_syntax =
             resolve_diff_content_syntax(syntax_set, normalized_ext);
-        let mut highlighter = HighlightLines::new(content_syntax, syntax_theme);
         let mut lines = Vec::with_capacity(self.buffer.line_count());
 
         for line_index in 0..self.buffer.line_count() {
@@ -454,8 +453,6 @@ impl CodeEditor {
                 github_diff_line_kind(line),
                 Some(DiffLineKind::Hunk | DiffLineKind::Meta)
             ) {
-                highlighter =
-                    HighlightLines::new(content_syntax, syntax_theme);
                 lines.push(HighlightedDiffLine::default());
                 continue;
             }
@@ -466,6 +463,8 @@ impl CodeEditor {
             };
 
             let code_content = line.get(1..).unwrap_or("");
+            let mut highlighter =
+                HighlightLines::new(content_syntax, syntax_theme);
             let ranges = highlighter
                 .highlight_line(code_content, syntax_set)
                 .unwrap_or_else(|_| vec![(Style::default(), code_content)]);
@@ -2377,6 +2376,43 @@ mod tests {
         assert!(
             distinct_colors.len() > 1,
             "Python diff content should not be plain monochrome text"
+        );
+    }
+
+    #[test]
+    fn test_python_diff_highlighting_resets_state_between_diff_lines() {
+        let mut editor = CodeEditor::new(
+            "-    \"\"\"\n-    return RequestAuth(\"Dover\")",
+            "diff",
+        );
+        editor.set_diff_content_syntax(Some("py"));
+        let (syntax_set, theme_name, syntax_theme) = syntax_test_inputs();
+
+        editor.ensure_highlighted_diff_cache(
+            syntax_set,
+            theme_name,
+            syntax_theme,
+        );
+
+        let cache_ref = editor.highlighted_diff_cache.borrow();
+        let Some(cache) = cache_ref.as_ref() else {
+            assert!(false, "highlighted diff cache should be populated");
+            return;
+        };
+        let Some(line) = cache.lines.get(1) else {
+            assert!(false, "highlighted diff line should be present");
+            return;
+        };
+        let distinct_colors = line.spans.iter().fold(Vec::new(), |mut colors, span| {
+            if !colors.iter().any(|color| color == &span.color) {
+                colors.push(span.color);
+            }
+            colors
+        });
+
+        assert!(
+            distinct_colors.len() > 1,
+            "Python highlighting should not leak multiline parser state across diff lines"
         );
     }
 
