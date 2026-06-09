@@ -1,3 +1,4 @@
+use crate::config::AppTheme;
 use iced::theme::Palette;
 use iced::{Color, Theme};
 
@@ -31,4 +32,33 @@ pub fn github_dark() -> Theme {
 
 pub fn github_light() -> Theme {
     Theme::custom("GitHub Light".to_owned(), github_light_palette())
+}
+
+pub fn from_app_theme(app_theme: AppTheme) -> Theme {
+    match app_theme {
+        AppTheme::GitHubDark => github_dark(),
+        AppTheme::GitHubLight => github_light(),
+        AppTheme::Light => Theme::Light,
+        AppTheme::Dark => Theme::Dark,
+        AppTheme::Dracula => Theme::Dracula,
+        AppTheme::Nord => Theme::Nord,
+        AppTheme::SolarizedLight => Theme::SolarizedLight,
+        AppTheme::SolarizedDark => Theme::SolarizedDark,
+        AppTheme::GruvboxLight => Theme::GruvboxLight,
+        AppTheme::GruvboxDark => Theme::GruvboxDark,
+        AppTheme::CatppuccinLatte => Theme::CatppuccinLatte,
+        AppTheme::CatppuccinFrappe => Theme::CatppuccinFrappe,
+        AppTheme::CatppuccinMacchiato => Theme::CatppuccinMacchiato,
+        AppTheme::CatppuccinMocha => Theme::CatppuccinMocha,
+        AppTheme::TokyoNight => Theme::TokyoNight,
+        AppTheme::TokyoNightStorm => Theme::TokyoNightStorm,
+        AppTheme::TokyoNightLight => Theme::TokyoNightLight,
+        AppTheme::KanagawaWave => Theme::KanagawaWave,
+        AppTheme::KanagawaDragon => Theme::KanagawaDragon,
+        AppTheme::KanagawaLotus => Theme::KanagawaLotus,
+        AppTheme::Moonfly => Theme::Moonfly,
+        AppTheme::Nightfly => Theme::Nightfly,
+        AppTheme::Oxocarbon => Theme::Oxocarbon,
+        AppTheme::Ferra => Theme::Ferra,
+    }
 }

@@ -1,8 +1,8 @@
 use crate::actions::load_changed_files;
 use crate::config;
+use crate::config::AppTheme;
 use crate::git::diff::{ChangedFile, FileDiff};
 use crate::search::{ProjectSearchResult, SEARCH_DEBOUNCE_MS};
-use crate::theme;
 use crate::tree::{SidebarRow, TreeDir, expand_parent_dirs};
 use crate::watch;
 use iced::keyboard;
@@ -13,12 +13,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ThemeMode {
-    Dark,
-    Light,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StatusTone {
@@ -344,7 +338,9 @@ pub(crate) struct State {
     pub(crate) selection_anchor_sidebar_target: Option<SidebarTarget>,
     pub(crate) current_diff: Option<FileDiff>,
     pub(crate) diff_editor: iced_code_editor::CodeEditor,
-    pub(crate) theme_mode: ThemeMode,
+    pub(crate) current_theme: AppTheme,
+    pub(crate) last_light_theme: AppTheme,
+    pub(crate) last_dark_theme: AppTheme,
     pub(crate) error: Option<String>,
     pub(crate) status_message: Option<StatusMessage>,
     pub(crate) status_message_id: u64,
@@ -466,6 +462,7 @@ pub(crate) enum Message {
     DiffLoaded(u64, Result<FileDiff, String>),
     DiffEditor(EditorMessage),
     ToggleTheme,
+    ThemeSelected(AppTheme),
     OpenRepo,
     RepoOpened(Option<PathBuf>),
     WatchEvent(watch::Event),
@@ -532,41 +529,6 @@ pub(crate) enum Message {
     OpenSettings,
     CloseSettings,
     RemoveRecentRepo(String),
-}
-
-impl ThemeMode {
-    pub(crate) fn from_preference(preference: config::ThemePreference) -> Self {
-        match preference {
-            config::ThemePreference::Dark => Self::Dark,
-            config::ThemePreference::Light => Self::Light,
-            config::ThemePreference::System => Self::Dark,
-        }
-    }
-
-    pub(crate) fn preference(self) -> config::ThemePreference {
-        match self {
-            Self::Dark => config::ThemePreference::Dark,
-            Self::Light => config::ThemePreference::Light,
-        }
-    }
-
-    pub(crate) fn app_theme(self) -> Theme {
-        match self {
-            Self::Dark => theme::github_dark(),
-            Self::Light => theme::github_light(),
-        }
-    }
-
-    pub(crate) fn toggle(&mut self) {
-        *self = match self {
-            Self::Dark => Self::Light,
-            Self::Light => Self::Dark,
-        };
-    }
-
-    pub(crate) fn is_dark(self) -> bool {
-        matches!(self, Self::Dark)
-    }
 }
 
 impl CommitComposer {
@@ -814,7 +776,9 @@ impl State {
 
     pub(crate) fn persist_settings(&self) {
         let settings = config::Settings {
-            theme: self.theme_mode.preference(),
+            current_theme: self.current_theme,
+            last_light_theme: self.last_light_theme,
+            last_dark_theme: self.last_dark_theme,
             repo_path: Some(self.repo_path.to_string_lossy().into_owned()),
             recent_repos: self.recent_repos.clone(),
             window_width: self.window_size.map(|s| s.width),

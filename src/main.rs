@@ -24,7 +24,7 @@ mod tests;
 
 use actions::{fetch_current_branch, load_changed_files};
 use app::{
-    ActivePane, ActionsMenu, ChangesFocus, HistoryFocus, Message, SidebarTab, State, ThemeMode,
+    ActivePane, ActionsMenu, ChangesFocus, HistoryFocus, Message, SidebarTab, State,
 };
 use iced::event as iced_event;
 use iced::time;
@@ -137,16 +137,18 @@ fn boot() -> (State, Task<Message>) {
         _ => None,
     };
 
-    let theme_mode = ThemeMode::from_preference(settings.theme);
+    let current_theme = settings.current_theme;
+    let last_light_theme = settings.last_light_theme;
+    let last_dark_theme = settings.last_dark_theme;
 
     let mut diff_editor = CodeEditor::new("", "diff");
-    diff_editor.set_theme(editor_theme::from_iced_theme(&theme_mode.app_theme()));
+    diff_editor.set_theme(editor_theme::from_iced_theme(&theme::from_app_theme(current_theme)));
     diff_editor.set_font(MONO);
     diff_editor.set_font_size(13.0, true);
     diff_editor.set_smooth_scroll_enabled(true);
     diff_editor.lose_focus();
 
-    let cached_theme = theme_mode.app_theme();
+    let cached_theme = theme::from_app_theme(current_theme);
     let state = State {
         repo_path: repo_path.clone(),
         files: Vec::new(),
@@ -157,7 +159,9 @@ fn boot() -> (State, Task<Message>) {
         selection_anchor_sidebar_target: None,
         current_diff: None,
         diff_editor,
-        theme_mode,
+        current_theme,
+        last_light_theme,
+        last_dark_theme,
         error: None,
         status_message: None,
         status_message_id: 0,

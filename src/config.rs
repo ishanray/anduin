@@ -23,19 +23,122 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum ThemePreference {
+pub enum AppTheme {
+    GitHubLight,
+    #[default]
+    GitHubDark,
     Light,
     Dark,
-    #[default]
-    System,
+    Dracula,
+    Nord,
+    SolarizedLight,
+    SolarizedDark,
+    GruvboxLight,
+    GruvboxDark,
+    CatppuccinLatte,
+    CatppuccinFrappe,
+    CatppuccinMacchiato,
+    CatppuccinMocha,
+    TokyoNight,
+    TokyoNightStorm,
+    TokyoNightLight,
+    KanagawaWave,
+    KanagawaDragon,
+    KanagawaLotus,
+    Moonfly,
+    Nightfly,
+    Oxocarbon,
+    Ferra,
+}
+
+impl AppTheme {
+    pub fn is_dark(self) -> bool {
+        !matches!(
+            self,
+            Self::GitHubLight
+                | Self::Light
+                | Self::SolarizedLight
+                | Self::GruvboxLight
+                | Self::CatppuccinLatte
+                | Self::TokyoNightLight
+                | Self::KanagawaLotus
+        )
+    }
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::GitHubLight => "GitHub Light",
+            Self::GitHubDark => "GitHub Dark",
+            Self::Light => "Light",
+            Self::Dark => "Dark",
+            Self::Dracula => "Dracula",
+            Self::Nord => "Nord",
+            Self::SolarizedLight => "Solarized Light",
+            Self::SolarizedDark => "Solarized Dark",
+            Self::GruvboxLight => "Gruvbox Light",
+            Self::GruvboxDark => "Gruvbox Dark",
+            Self::CatppuccinLatte => "Catppuccin Latte",
+            Self::CatppuccinFrappe => "Catppuccin Frappé",
+            Self::CatppuccinMacchiato => "Catppuccin Macchiato",
+            Self::CatppuccinMocha => "Catppuccin Mocha",
+            Self::TokyoNight => "Tokyo Night",
+            Self::TokyoNightStorm => "Tokyo Night Storm",
+            Self::TokyoNightLight => "Tokyo Night Light",
+            Self::KanagawaWave => "Kanagawa Wave",
+            Self::KanagawaDragon => "Kanagawa Dragon",
+            Self::KanagawaLotus => "Kanagawa Lotus",
+            Self::Moonfly => "Moonfly",
+            Self::Nightfly => "Nightfly",
+            Self::Oxocarbon => "Oxocarbon",
+            Self::Ferra => "Ferra",
+        }
+    }
+
+    pub fn all_light() -> &'static [Self] {
+        &[
+            Self::GitHubLight,
+            Self::Light,
+            Self::SolarizedLight,
+            Self::GruvboxLight,
+            Self::CatppuccinLatte,
+            Self::TokyoNightLight,
+            Self::KanagawaLotus,
+        ]
+    }
+
+    pub fn all_dark() -> &'static [Self] {
+        &[
+            Self::GitHubDark,
+            Self::Dark,
+            Self::Dracula,
+            Self::Nord,
+            Self::SolarizedDark,
+            Self::GruvboxDark,
+            Self::CatppuccinFrappe,
+            Self::CatppuccinMacchiato,
+            Self::CatppuccinMocha,
+            Self::TokyoNight,
+            Self::TokyoNightStorm,
+            Self::KanagawaWave,
+            Self::KanagawaDragon,
+            Self::Moonfly,
+            Self::Nightfly,
+            Self::Oxocarbon,
+            Self::Ferra,
+        ]
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Settings {
     #[serde(default)]
-    pub theme: ThemePreference,
+    pub current_theme: AppTheme,
+    #[serde(default = "default_light_theme")]
+    pub last_light_theme: AppTheme,
+    #[serde(default = "default_dark_theme")]
+    pub last_dark_theme: AppTheme,
     #[serde(default)]
     pub repo_path: Option<String>,
     #[serde(default)]
@@ -46,6 +149,14 @@ pub struct Settings {
     pub window_height: Option<f32>,
     #[serde(default)]
     pub zoom_level: Option<f32>,
+}
+
+fn default_light_theme() -> AppTheme {
+    AppTheme::GitHubLight
+}
+
+fn default_dark_theme() -> AppTheme {
+    AppTheme::GitHubDark
 }
 
 pub fn load_settings() -> Result<Settings> {

@@ -11,6 +11,7 @@ use crate::app::{
     HistoryFocus, MenuAction, MenuItem, Message, ProjectPicker, ProjectSearch, SidebarTab,
     SidebarTarget, State, StatusTone,
 };
+use crate::config::AppTheme;
 use crate::git;
 use crate::search::SEARCH_DEBOUNCE_MS;
 use crate::shortcuts::{
@@ -19,6 +20,7 @@ use crate::shortcuts::{
 };
 use crate::tree::SidebarRow;
 use crate::views::sidebar::PICKER_ROW_HEIGHT;
+use crate::theme;
 use crate::watch;
 use iced::Task;
 use iced::keyboard;
@@ -177,8 +179,30 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
 }
 
 pub(crate) fn handle_toggle_theme(state: &mut State) -> Task<Message> {
-    state.theme_mode.toggle();
-    state.cached_theme = state.theme_mode.app_theme();
+    if state.current_theme.is_dark() {
+        state.current_theme = state.last_light_theme;
+    } else {
+        state.current_theme = state.last_dark_theme;
+    }
+    state.cached_theme = theme::from_app_theme(state.current_theme);
+    state
+        .diff_editor
+        .set_theme(editor_theme::from_iced_theme(&state.cached_theme));
+    state.persist_settings();
+    Task::none()
+}
+
+pub(crate) fn handle_theme_selected(
+    state: &mut State,
+    theme: AppTheme,
+) -> Task<Message> {
+    state.current_theme = theme;
+    if theme.is_dark() {
+        state.last_dark_theme = theme;
+    } else {
+        state.last_light_theme = theme;
+    }
+    state.cached_theme = theme::from_app_theme(theme);
     state
         .diff_editor
         .set_theme(editor_theme::from_iced_theme(&state.cached_theme));

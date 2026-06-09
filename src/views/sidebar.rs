@@ -18,7 +18,7 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
     let fg = palette.background.base.text;
     let muted_fg = palette.background.strong.text.scale_alpha(0.6);
 
-    let theme_icon = if state.theme_mode.is_dark() {
+    let theme_icon = if state.current_theme.is_dark() {
         lucide::sun().size(16).color(fg)
     } else {
         lucide::moon().size(16).color(fg)

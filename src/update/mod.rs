@@ -54,6 +54,7 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::OpenRepo => repo::handle_open_repo(),
         Message::RepoOpened(path) => repo::handle_repo_opened(state, path),
         Message::ToggleTheme => repo::handle_toggle_theme(state),
+        Message::ThemeSelected(theme) => repo::handle_theme_selected(state, theme),
         Message::WatchEvent(event) => repo::handle_watch_event(state, event),
         Message::KeyboardEvent(event) => repo::handle_keyboard_event(state, event),
         Message::SidebarScrolled(offset, height) => {

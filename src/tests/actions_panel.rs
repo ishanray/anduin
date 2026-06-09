@@ -1,7 +1,8 @@
 use crate::app::{
     ActivePane, ActionsMenu, ChangesFocus, Commit, HistoryFocus, Message, SidebarTab, State,
-    ThemeMode,
 };
+use crate::config::AppTheme;
+use crate::theme;
 use crate::git::diff::{ChangedFile, FileDiff, FileStatus};
 use crate::update;
 use iced::keyboard;
@@ -35,7 +36,9 @@ fn sample_commit() -> Commit {
 }
 
 fn test_state() -> State {
-    let theme_mode = ThemeMode::Dark;
+    let current_theme = AppTheme::GitHubDark;
+    let last_light_theme = AppTheme::GitHubLight;
+    let last_dark_theme = AppTheme::GitHubDark;
     let mut diff_editor = CodeEditor::new("", "diff");
     diff_editor.lose_focus();
 
@@ -49,7 +52,9 @@ fn test_state() -> State {
         selection_anchor_sidebar_target: None,
         current_diff: None,
         diff_editor,
-        theme_mode,
+        current_theme,
+        last_light_theme,
+        last_dark_theme,
         error: None,
         status_message: None,
         status_message_id: 0,
@@ -71,7 +76,7 @@ fn test_state() -> State {
         sidebar_scroll_offset: 0.0,
         sidebar_viewport_height: 0.0,
         active_pane: ActivePane::Sidebar,
-        cached_theme: theme_mode.app_theme(),
+        cached_theme: theme::from_app_theme(current_theme),
         actions_menu: ActionsMenu::new(),
         current_branch: None,
         branch_picker: None,
