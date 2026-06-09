@@ -392,6 +392,7 @@ pub(crate) struct State {
     pub(crate) window_size: Option<iced::Size>,
     pub(crate) pending_settings_save: Option<Instant>,
     pub(crate) zoom_level: f32,
+    pub(crate) settings_open: bool,
 }
 
 /// Pending discard confirmation: holds the paths that will be discarded.
@@ -528,6 +529,9 @@ pub(crate) enum Message {
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    OpenSettings,
+    CloseSettings,
+    RemoveRecentRepo(String),
 }
 
 impl ThemeMode {

@@ -231,6 +231,19 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
             state.pending_settings_save = Some(Instant::now() + Duration::from_millis(500));
             Task::none()
         }
+        Message::OpenSettings => {
+            state.settings_open = true;
+            Task::none()
+        }
+        Message::CloseSettings => {
+            state.settings_open = false;
+            Task::none()
+        }
+        Message::RemoveRecentRepo(repo) => {
+            state.recent_repos.retain(|r| r != &repo);
+            state.persist_settings();
+            Task::none()
+        }
         Message::OpenInEditor(rel_path) => {
             let full_path = state.repo_path.join(&rel_path);
 

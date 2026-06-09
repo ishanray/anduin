@@ -97,6 +97,7 @@ fn test_state() -> State {
         window_size: None,
         pending_settings_save: None,
         zoom_level: 1.0,
+        settings_open: false,
     }
 }
 

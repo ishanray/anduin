@@ -145,6 +145,7 @@ pub(crate) fn handle_repo_opened(state: &mut State, path: Option<PathBuf>) -> Ta
     state.sidebar_viewport_height = 0.0;
     state.active_pane = ActivePane::Sidebar;
     state.diff_editor.lose_focus();
+    state.settings_open = false;
 
     // Reset history state
     state.sidebar_tab = SidebarTab::Changes;
@@ -221,6 +222,16 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
     // Close context menu on any keypress
     if state.sidebar_context_menu.is_some() && matches!(event, keyboard::Event::KeyPressed { .. }) {
         state.sidebar_context_menu = None;
+        return Task::none();
+    }
+
+    if state.settings_open {
+        let keyboard::Event::KeyPressed { key, .. } = &event else {
+            return Task::none();
+        };
+        if matches!(key.as_ref(), keyboard::Key::Named(keyboard::key::Named::Escape)) {
+            return update(state, Message::CloseSettings);
+        }
         return Task::none();
     }
 

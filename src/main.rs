@@ -42,6 +42,7 @@ use views::actions_footer::view_actions_footer;
 use views::context_menu::view_context_menu;
 use views::diff::view_diff;
 use views::discard_confirm::view_discard_confirm;
+use views::settings_dialog::view_settings_dialog;
 use views::sidebar::view_sidebar;
 
 const MONO: Font = Font::MONOSPACE;
@@ -204,6 +205,7 @@ fn boot() -> (State, Task<Message>) {
         window_size: settings_window_size,
         pending_settings_save: None,
         zoom_level: settings.zoom_level.unwrap_or(1.0),
+        settings_open: false,
     };
 
     let branch_task = {
@@ -295,6 +297,14 @@ fn view(state: &State) -> Element<'_, Message> {
             .into()
     } else if state.sidebar_context_menu.is_some() {
         let overlay = view_context_menu(state);
+        Stack::new()
+            .push(content_with_footer)
+            .push(overlay)
+            .width(Fill)
+            .height(Fill)
+            .into()
+    } else if state.settings_open {
+        let overlay = view_settings_dialog(state);
         Stack::new()
             .push(content_with_footer)
             .push(overlay)

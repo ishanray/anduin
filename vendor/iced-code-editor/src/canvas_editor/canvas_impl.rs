@@ -98,72 +98,61 @@ fn blend_color(color1: Color, color2: Color, factor: f32) -> Color {
     }
 }
 
-fn soften_diff_background(
-    background: Option<Color>,
+/// Vibrant accent used to tint a diff line's background. `None` for `Meta`
+/// lines (file headers, `index` lines) which keep the plain editor background.
+fn diff_accent(kind: DiffLineKind, is_light: bool) -> Option<Color> {
+    let color = match (kind, is_light) {
+        (DiffLineKind::Addition, true) => Color::from_rgb(0.122, 0.533, 0.239), // #1f883d
+        (DiffLineKind::Addition, false) => Color::from_rgb(0.247, 0.725, 0.314), // #3fb950
+        (DiffLineKind::Deletion, true) => Color::from_rgb(0.812, 0.133, 0.180), // #cf222e
+        (DiffLineKind::Deletion, false) => Color::from_rgb(0.973, 0.318, 0.286), // #f85149
+        (DiffLineKind::Hunk, true) => Color::from_rgb(0.035, 0.412, 0.855), // #0969da
+        (DiffLineKind::Hunk, false) => Color::from_rgb(0.345, 0.651, 1.0),  // #58a6ff
+        (DiffLineKind::Meta, _) => return None,
+    };
+    Some(color)
+}
+
+/// Readable text color for the `+`/`-` prefix and for hunk/meta line text.
+fn diff_foreground(kind: DiffLineKind, is_light: bool) -> Color {
+    match (kind, is_light) {
+        (DiffLineKind::Addition, true) => Color::from_rgb(0.102, 0.498, 0.216), // #1a7f37
+        (DiffLineKind::Addition, false) => Color::from_rgb(0.247, 0.725, 0.314), // #3fb950
+        (DiffLineKind::Deletion, true) => Color::from_rgb(0.812, 0.133, 0.180), // #cf222e
+        (DiffLineKind::Deletion, false) => Color::from_rgb(1.0, 0.482, 0.447),  // #ff7b72
+        (DiffLineKind::Hunk, true) => Color::from_rgb(0.035, 0.412, 0.855),     // #0969da
+        (DiffLineKind::Hunk, false) => Color::from_rgb(0.345, 0.651, 1.0),      // #58a6ff
+        (DiffLineKind::Meta, true) => Color::from_rgb(0.345, 0.376, 0.416),     // #57606a
+        (DiffLineKind::Meta, false) => Color::from_rgb(0.545, 0.580, 0.620),    // #8b949e
+    }
+}
+
+/// Diff line background: the kind's vibrant accent overlaid on the *actual*
+/// editor background at a fixed low alpha. The result is a deterministic opaque
+/// color, so contrast scales with whatever theme is active and never depends on
+/// translucent compositing. Subtle, GitHub-style.
+fn diff_line_background(
     kind: DiffLineKind,
     editor_background: Color,
     is_light: bool,
 ) -> Option<Color> {
-    background.map(|color| {
-        let blend_factor = match (kind, is_light) {
-            (DiffLineKind::Addition | DiffLineKind::Deletion, true) => 0.94,
-            (DiffLineKind::Addition | DiffLineKind::Deletion, false) => 0.98,
-            (DiffLineKind::Hunk, true) => 0.42,
-            (DiffLineKind::Hunk, false) => 0.52,
-            (DiffLineKind::Meta, _) => 1.0,
+    if is_light {
+        return match kind {
+            DiffLineKind::Addition => Some(Color::from_rgb(0.902, 1.0, 0.925)), // #e6ffec
+            DiffLineKind::Deletion => Some(Color::from_rgb(1.0, 0.922, 0.914)), // #ffebe9
+            DiffLineKind::Hunk => Some(Color::from_rgb(0.867, 0.957, 1.0)),    // #ddf4ff
+            DiffLineKind::Meta => None,
         };
-        blend_color(color, editor_background, blend_factor)
+    }
+    diff_accent(kind, is_light).map(|accent| {
+        let alpha = match kind {
+            DiffLineKind::Hunk => 0.20,
+            DiffLineKind::Addition | DiffLineKind::Deletion => 0.14,
+            DiffLineKind::Meta => 0.0,
+        };
+        // (1 - alpha) * editor_bg + alpha * accent
+        blend_color(editor_background, accent, alpha)
     })
-}
-
-fn readable_diff_token_color(
-    color: Color,
-    diff_kind: Option<DiffLineKind>,
-) -> Color {
-    match diff_kind {
-        Some(DiffLineKind::Addition | DiffLineKind::Deletion) => color,
-        _ => color,
-    }
-}
-
-fn github_diff_colors(
-    kind: DiffLineKind,
-    is_light: bool,
-) -> (Option<Color>, Color) {
-    match (kind, is_light) {
-        (DiffLineKind::Addition, true) => (
-            Some(Color::from_rgb(0.855, 0.984, 0.882)), // #dafbe1
-            Color::from_rgb(0.102, 0.498, 0.216),       // #1a7f37
-        ),
-        (DiffLineKind::Deletion, true) => (
-            Some(Color::from_rgb(1.0, 0.922, 0.914)),   // #ffebe9
-            Color::from_rgb(0.812, 0.133, 0.180),       // #cf222e
-        ),
-        (DiffLineKind::Hunk, true) => (
-            Some(Color::from_rgb(0.867, 0.957, 1.0)),   // #ddf4ff
-            Color::from_rgb(0.035, 0.412, 0.855),       // #0969da
-        ),
-        (DiffLineKind::Meta, true) => (
-            None,
-            Color::from_rgb(0.345, 0.376, 0.416),       // #57606a
-        ),
-        (DiffLineKind::Addition, false) => (
-            Some(Color::from_rgb(0.020, 0.227, 0.086)), // #053b16
-            Color::from_rgb(0.341, 0.792, 0.427),       // #57d364
-        ),
-        (DiffLineKind::Deletion, false) => (
-            Some(Color::from_rgb(0.404, 0.024, 0.047)), // #67060c
-            Color::from_rgb(1.0, 0.561, 0.561),         // #ff8e8e
-        ),
-        (DiffLineKind::Hunk, false) => (
-            Some(Color::from_rgb(0.047, 0.176, 0.420)), // #0c2d6b
-            Color::from_rgb(0.475, 0.757, 1.0),         // #79c0ff
-        ),
-        (DiffLineKind::Meta, false) => (
-            None,
-            Color::from_rgb(0.545, 0.580, 0.620),       // #8b949e
-        ),
-    }
 }
 
 fn github_diff_line_kind(line: &str) -> Option<DiffLineKind> {
@@ -513,9 +502,10 @@ impl CodeEditor {
 
         if visual_line.start_col == 0 {
             let is_light = is_light_background(self.style.background);
-            let prefix_color = diff_kind.map_or(self.style.text_color, |kind| {
-                github_diff_colors(kind, is_light).1
-            });
+            let prefix_color = diff_kind
+                .map_or(self.style.text_color, |kind| {
+                    diff_foreground(kind, is_light)
+                });
             frame.fill_text(canvas::Text {
                 content: prefix.to_string(),
                 position: Point::new(base_x, y + 2.0),
@@ -554,10 +544,7 @@ impl CodeEditor {
                 frame.fill_text(canvas::Text {
                     content: segment_text.to_owned(),
                     position: Point::new(x_offset, y + 2.0),
-                    color: readable_diff_token_color(
-                        span.color,
-                        diff_kind,
-                    ),
+                    color: span.color,
                     size: ctx.font_size.into(),
                     font: ctx.font,
                     ..canvas::Text::default()
@@ -624,9 +611,8 @@ impl CodeEditor {
             let is_light = is_light_background(self.style.background);
 
             if let Some(kind) = github_diff_line_kind(full_line_content) {
-                let (background, foreground) = github_diff_colors(kind, is_light);
-                let background = soften_diff_background(
-                    background,
+                let foreground = diff_foreground(kind, is_light);
+                let background = diff_line_background(
                     kind,
                     self.style.background,
                     is_light,
@@ -1821,7 +1807,7 @@ impl canvas::Program<Message> for CodeEditor {
                         + self.style.background.b)
                         / 3.0;
                 let preferred_syntax_theme = if background_brightness > 0.5 {
-                    "base16-ocean.light"
+                    "InspiredGitHub"
                 } else {
                     "base16-eighties.dark"
                 };
@@ -2327,10 +2313,9 @@ mod tests {
     }
 
     #[test]
-    fn test_diff_backgrounds_are_softened_for_readability() {
+    fn test_diff_backgrounds_are_a_subtle_visible_tint() {
         let editor_background = Color::from_rgb(0.051, 0.067, 0.090);
-        let Some(softened) = soften_diff_background(
-            Some(Color::from_rgb(0.020, 0.227, 0.086)),
+        let Some(addition) = diff_line_background(
             DiffLineKind::Addition,
             editor_background,
             false,
@@ -2339,9 +2324,22 @@ mod tests {
             return;
         };
 
+        // The tint must read as green: clearly above the editor background...
         assert!(
-            softened.g < 0.09,
-            "dark addition background should be a subtle cue, not a saturated block"
+            addition.g > editor_background.g + 0.04,
+            "addition background should be visibly tinted green, not invisible"
+        );
+        // ...yet remain subtle, far below the raw accent so code stays readable.
+        assert!(
+            addition.g < 0.4,
+            "addition background should be a subtle cue, not a saturated block"
+        );
+
+        // Meta lines keep the plain editor background (no tint).
+        assert!(
+            diff_line_background(DiffLineKind::Meta, editor_background, false)
+                .is_none(),
+            "meta lines should not be tinted"
         );
     }
 

@@ -8,6 +8,7 @@ use iced::widget::{
     Space, Stack, button, column, container, mouse_area, row, rule, scrollable, text, text_input,
 };
 use iced::{Element, Fill, Length, Theme};
+use std::path::PathBuf;
 
 pub(crate) const PICKER_ROW_HEIGHT: f32 = 32.0;
 
@@ -51,6 +52,7 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
                 .style(button::text)
                 .padding([4, 8]),
             button(lucide::settings().size(16).color(fg))
+                .on_press(Message::OpenSettings)
                 .style(button::text)
                 .padding([4, 8]),
         ]
@@ -433,9 +435,52 @@ pub(crate) fn view_sidebar(state: &State) -> Element<'_, Message> {
         }
     };
 
+    // Recent projects chips (below header, above tabs)
+    let recent_projects: Element<'_, Message> = {
+        let chips: Vec<Element<'_, Message>> = state
+            .recent_repos
+            .iter()
+            .filter(|repo| {
+                let repo_path = PathBuf::from(repo);
+                repo_path != state.repo_path
+            })
+            .take(3)
+            .map(|repo| {
+                let name = repo.rsplit('/').next().unwrap_or(repo);
+                let repo_owned = repo.to_string();
+                button(
+                    row![
+                        lucide::folder().size(12).color(muted_fg),
+                        text(name).size(12).color(muted_fg),
+                    ]
+                    .spacing(4)
+                    .align_y(iced::Alignment::Center),
+                )
+                .on_press(Message::RepoOpened(Some(PathBuf::from(repo_owned))))
+                .style(button::text)
+                .padding([2, 8])
+                .into()
+            })
+            .collect();
+
+        if chips.is_empty() {
+            Space::new().height(0).into()
+        } else {
+            container(
+                row(chips)
+                    .spacing(4)
+                    .align_y(iced::Alignment::Center),
+            )
+            .padding([6, 16])
+            .width(Fill)
+            .into()
+        }
+    };
+
     let sidebar_column = column![
         header,
         rule::horizontal(1),
+        recent_projects,
         tab_bar,
         rule::horizontal(1),
         main_list,
