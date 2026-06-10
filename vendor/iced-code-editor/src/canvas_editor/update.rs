@@ -991,7 +991,7 @@ impl CodeEditor {
     // Complex Standalone Handlers
     // =========================================================================
 
-    fn max_viewport_scroll(
+    pub fn max_viewport_scroll(
         &self,
         viewport_height: f32,
         viewport_width: f32,
@@ -1002,7 +1002,7 @@ impl CodeEditor {
         (content_height - viewport_height.max(0.0)).max(0.0)
     }
 
-    fn clamp_viewport_scroll(
+    pub fn clamp_viewport_scroll(
         &self,
         scroll: f32,
         viewport_height: f32,
@@ -1029,7 +1029,7 @@ impl CodeEditor {
         )
     }
 
-    fn apply_viewport_scroll(
+    pub fn apply_viewport_scroll(
         &mut self,
         new_scroll: f32,
         new_height: f32,

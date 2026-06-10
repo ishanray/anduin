@@ -6,7 +6,7 @@
 use iced::advanced::text::{
     Alignment, Paragraph, Renderer as TextRenderer, Text,
 };
-use iced::widget::operation::{RelativeOffset, snap_to, scroll_to};
+use iced::widget::operation::{RelativeOffset, snap_to, scroll_by, scroll_to};
 use iced::widget::scrollable;
 use iced::widget::{Id, canvas};
 use std::cell::RefCell;
@@ -882,6 +882,27 @@ impl CodeEditor {
     /// Returns the current vertical scroll offset in pixels.
     pub fn viewport_scroll(&self) -> f32 {
         self.viewport_scroll
+    }
+
+    /// Scrolls the editor by the given delta in pixels.
+    pub fn scroll_by(&mut self, delta_y: f32) -> iced::Task<Message> {
+        let new_scroll = (self.viewport_scroll + delta_y)
+            .clamp(
+                0.0,
+                self.max_viewport_scroll(self.viewport_height, self.viewport_width),
+            );
+        self.apply_viewport_scroll(new_scroll, self.viewport_height, self.viewport_width);
+        self.target_viewport_scroll = new_scroll;
+        scroll_by(
+            self.scrollable_id.clone(),
+            scrollable::AbsoluteOffset { x: 0.0, y: delta_y },
+        )
+    }
+
+    /// Returns whether the editor content is taller than the viewport.
+    pub fn is_scrollable(&self) -> bool {
+        let content_height = self.buffer.line_count() as f32 * self.line_height;
+        content_height > self.viewport_height
     }
 
     /// Resets the cursor blink animation.

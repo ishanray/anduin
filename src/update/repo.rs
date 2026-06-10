@@ -428,7 +428,27 @@ pub(crate) fn handle_keyboard_event(state: &mut State, event: keyboard::Event) -
         Some(ShortcutAction::ZoomOut) => update(state, Message::ZoomOut),
         Some(ShortcutAction::ZoomReset) => update(state, Message::ZoomReset),
         None => {
-            if state.sidebar_tab == SidebarTab::History {
+            let is_cmd_arrow = if let keyboard::Event::KeyPressed { key, modifiers, .. } = &event {
+                let primary = is_primary_modifier_pressed(current_shortcut_platform(), *modifiers);
+                primary && matches!(key.as_ref(), keyboard::Key::Named(keyboard::key::Named::ArrowUp | keyboard::key::Named::ArrowDown))
+            } else {
+                false
+            };
+
+            if is_cmd_arrow
+                && state.active_pane == ActivePane::Sidebar
+                && state.diff_editor.is_scrollable()
+                && state.project_search.as_ref().is_none_or(|s| !s.is_open)
+            {
+                let keyboard::Event::KeyPressed { key, .. } = &event else { unreachable!() };
+                let direction = match key.as_ref() {
+                    keyboard::Key::Named(keyboard::key::Named::ArrowUp) => -1.0,
+                    keyboard::Key::Named(keyboard::key::Named::ArrowDown) => 1.0,
+                    _ => 0.0,
+                };
+                let delta = direction * 60.0;
+                state.diff_editor.scroll_by(delta).map(Message::DiffEditor)
+            } else if state.sidebar_tab == SidebarTab::History {
                 handle_history_keyboard_event(state, &event)
             } else if state.active_pane == ActivePane::Sidebar {
                 handle_file_list_keyboard_event(state, &event)
