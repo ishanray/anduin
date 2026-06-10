@@ -5,7 +5,8 @@ use crate::{MONO, PANEL_HEADER_HEIGHT, lucide};
 use iced::theme::palette::Extended;
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    Space, button, column, container, mouse_area, row, rule, scrollable, text, text_input,
+    Space, button, column, container, mouse_area, row, rule, scrollable, text, text_editor,
+    text_input,
 };
 use iced::{Element, Fill, Length, Theme};
 
@@ -406,6 +407,13 @@ fn view_commit_composer<'a>(
                 .padding([8, 10])
                 .size(15)
                 .font(MONO),
+            text_editor(&composer.description_content)
+                .placeholder("Description (optional)")
+                .on_action(Message::CommitDescriptionEdit)
+                .padding([8, 10])
+                .size(14)
+                .font(MONO)
+                .min_height(72),
             error_line,
             row![Space::new().width(Fill), commit_button]
                 .spacing(12)

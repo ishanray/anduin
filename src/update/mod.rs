@@ -75,6 +75,9 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::CommitSummaryChanged(summary) => {
             repo::handle_commit_summary_changed(state, summary)
         }
+        Message::CommitDescriptionEdit(action) => {
+            repo::handle_commit_description_edit(state, action)
+        }
         Message::SubmitCommit => repo::handle_submit_commit(state),
         Message::GitOperationFinished(result) => repo::handle_git_operation_finished(state, result),
         Message::CommitFinished(result) => repo::handle_commit_finished(state, result),

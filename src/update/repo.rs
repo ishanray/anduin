@@ -27,6 +27,7 @@ use iced::Theme;
 use iced::keyboard;
 use iced::widget::Id;
 use iced::widget::operation::{focus, move_cursor_to_end, select_all};
+use iced::widget::text_editor;
 use iced_code_editor::{Message as EditorMessage, theme as editor_theme};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -501,6 +502,16 @@ pub(crate) fn handle_commit_summary_changed(state: &mut State, summary: String) 
     Task::none()
 }
 
+pub(crate) fn handle_commit_description_edit(
+    state: &mut State,
+    action: text_editor::Action,
+) -> Task<Message> {
+    if let Some(composer) = state.commit_composer.as_mut() {
+        composer.description_content.perform(action);
+    }
+    Task::none()
+}
+
 pub(crate) fn handle_submit_commit(state: &mut State) -> Task<Message> {
     let staged_count = state.staged_file_count();
     let Some(composer) = state.commit_composer.as_mut() else {
@@ -526,9 +537,10 @@ pub(crate) fn handle_submit_commit(state: &mut State) -> Task<Message> {
 
     let repo_path = state.repo_path.clone();
     let summary = composer.summary.trim().to_owned();
+    let description = composer.description_content.text().trim().to_owned();
     Task::perform(
         async move {
-            commit_staged_changes(repo_path, summary.clone())
+            commit_staged_changes(repo_path, summary.clone(), description)
                 .map(|sha| format!("Committed {sha} — {summary}"))
         },
         Message::CommitFinished,

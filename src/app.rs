@@ -6,7 +6,7 @@ use crate::search::{ProjectSearchResult, SEARCH_DEBOUNCE_MS};
 use crate::tree::{SidebarRow, TreeDir, expand_parent_dirs};
 use crate::watch;
 use iced::keyboard;
-use iced::widget::Id;
+use iced::widget::{Id, text_editor};
 use iced::theme::palette::Palette;
 use iced::{Task, Theme};
 use iced_code_editor::Message as EditorMessage;
@@ -30,6 +30,7 @@ pub(crate) struct StatusMessage {
 #[derive(Debug, Clone)]
 pub(crate) struct CommitComposer {
     pub(crate) summary: String,
+    pub(crate) description_content: text_editor::Content,
     pub(crate) input_id: Id,
     pub(crate) submitting: bool,
     pub(crate) error: Option<String>,
@@ -486,6 +487,7 @@ pub(crate) enum Message {
     OpenCommitComposer,
     CloseCommitComposer,
     CommitSummaryChanged(String),
+    CommitDescriptionEdit(text_editor::Action),
     SubmitCommit,
     GitOperationFinished(Result<String, String>),
     CommitFinished(Result<String, String>),
@@ -552,6 +554,7 @@ impl CommitComposer {
     pub(crate) fn new() -> Self {
         Self {
             summary: String::new(),
+            description_content: text_editor::Content::new(),
             input_id: Id::unique(),
             submitting: false,
             error: None,

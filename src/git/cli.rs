@@ -153,9 +153,13 @@ pub fn git_unstage_all(repo_path: &Path) -> Result<()> {
     }
 }
 
-pub fn git_commit(repo_path: &Path, summary: &str) -> Result<String> {
-    let output = Command::new("git")
-        .args(["commit", "-m", summary])
+pub fn git_commit(repo_path: &Path, summary: &str, description: &str) -> Result<String> {
+    let mut cmd = Command::new("git");
+    cmd.args(["commit", "-m", summary]);
+    if !description.is_empty() {
+        cmd.args(["-m", description]);
+    }
+    let output = cmd
         .current_dir(repo_path)
         .output()
         .context("failed to run git commit")?;

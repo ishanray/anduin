@@ -55,8 +55,12 @@ pub(crate) fn discard_files(repo_path: PathBuf, paths: Vec<String>) -> Result<St
     ))
 }
 
-pub(crate) fn commit_staged_changes(repo_path: PathBuf, summary: String) -> Result<String, String> {
-    git::cli::git_commit(&repo_path, &summary).map_err(|e| e.to_string())
+pub(crate) fn commit_staged_changes(
+    repo_path: PathBuf,
+    summary: String,
+    description: String,
+) -> Result<String, String> {
+    git::cli::git_commit(&repo_path, &summary, &description).map_err(|e| e.to_string())
 }
 
 pub(crate) fn load_project_search_results(
