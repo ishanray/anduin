@@ -1,4 +1,4 @@
-use crate::app::{ChangesFocus, CommitComposer, HistoryFocus, Message, SidebarTab, State};
+use crate::app::{ChangesFocus, CommitComposer, CommitFocus, HistoryFocus, Message, SidebarTab, State};
 use crate::git::diff::FileStatus;
 use crate::views::project_search::view_search_content;
 use crate::{MONO, PANEL_HEADER_HEIGHT, lucide};
@@ -8,7 +8,7 @@ use iced::widget::{
     Space, button, column, container, mouse_area, row, rule, scrollable, text, text_editor,
     text_input,
 };
-use iced::{Element, Fill, Length, Theme};
+use iced::{Border, Element, Fill, Length, Theme};
 
 pub(crate) fn view_diff(state: &State) -> Element<'_, Message> {
     let theme = state.app_theme();
@@ -359,6 +359,9 @@ fn view_commit_composer<'a>(
         )
     };
 
+    let focus_color = palette.primary.strong.color;
+    let button_focused = composer.focus == CommitFocus::Button;
+
     let commit_button = if composer.can_submit(staged_count) {
         button(text(if composer.submitting {
             "Committing…"
@@ -366,14 +369,34 @@ fn view_commit_composer<'a>(
             "Commit"
         }))
         .on_press(Message::SubmitCommit)
-        .style(button::primary)
+        .style(move |theme: &Theme, status: button::Status| {
+            let mut style = button::primary(theme, status);
+            if button_focused {
+                style.border = Border {
+                    color: focus_color,
+                    width: 2.0,
+                    radius: 6.0.into(),
+                };
+            }
+            style
+        })
     } else {
         button(text(if composer.submitting {
             "Committing…"
         } else {
             "Commit"
         }))
-        .style(button::secondary)
+        .style(move |theme: &Theme, status: button::Status| {
+            let mut style = button::secondary(theme, status);
+            if button_focused {
+                style.border = Border {
+                    color: focus_color,
+                    width: 2.0,
+                    radius: 6.0.into(),
+                };
+            }
+            style
+        })
     };
 
     let error_line: Element<'a, Message> = if let Some(error) = composer.error.as_ref() {
@@ -408,6 +431,7 @@ fn view_commit_composer<'a>(
                 .size(15)
                 .font(MONO),
             text_editor(&composer.description_content)
+                .id(composer.description_id.clone())
                 .placeholder("Description (optional)")
                 .on_action(Message::CommitDescriptionEdit)
                 .padding([8, 10])

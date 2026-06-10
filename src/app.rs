@@ -27,11 +27,20 @@ pub(crate) struct StatusMessage {
     pub(crate) tone: StatusTone,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CommitFocus {
+    Summary,
+    Description,
+    Button,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct CommitComposer {
     pub(crate) summary: String,
     pub(crate) description_content: text_editor::Content,
     pub(crate) input_id: Id,
+    pub(crate) description_id: Id,
+    pub(crate) focus: CommitFocus,
     pub(crate) submitting: bool,
     pub(crate) error: Option<String>,
 }
@@ -556,6 +565,8 @@ impl CommitComposer {
             summary: String::new(),
             description_content: text_editor::Content::new(),
             input_id: Id::unique(),
+            description_id: Id::unique(),
+            focus: CommitFocus::Summary,
             submitting: false,
             error: None,
         }

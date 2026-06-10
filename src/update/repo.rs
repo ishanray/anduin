@@ -7,9 +7,9 @@ use crate::actions::{
     stage_all_files, stage_files, switch_branch, unstage_all_files, unstage_files,
 };
 use crate::app::{
-    ActivePane, BranchPicker, ChangesFocus, CommitComposer, DiscardButton, DiscardConfirm,
-    HistoryFocus, MenuAction, MenuItem, Message, ProjectPicker, ProjectSearch, SidebarTab,
-    SidebarTarget, State, StatusTone, ThemeTransition,
+    ActivePane, BranchPicker, ChangesFocus, CommitComposer, CommitFocus, DiscardButton,
+    DiscardConfirm, HistoryFocus, MenuAction, MenuItem, Message, ProjectPicker, ProjectSearch,
+    SidebarTab, SidebarTarget, State, StatusTone, ThemeTransition,
 };
 use crate::config::AppTheme;
 use crate::git;
@@ -484,6 +484,7 @@ pub(crate) fn handle_open_commit_composer(state: &mut State) -> Task<Message> {
         .take()
         .unwrap_or_else(CommitComposer::new);
     composer.error = None;
+    composer.focus = CommitFocus::Summary;
     let input_id = composer.input_id.clone();
     state.commit_composer = Some(composer);
     Task::batch([focus(input_id.clone()), move_cursor_to_end(input_id)])
@@ -988,16 +989,52 @@ fn handle_commit_keyboard_event(state: &mut State, event: &keyboard::Event) -> T
                 return Task::none();
             };
 
+            let Some(composer) = state.commit_composer.as_mut() else {
+                return Task::none();
+            };
+
             if is_primary_modifier_pressed(current_shortcut_platform(), *modifiers)
                 && matches!(
                     key.as_ref(),
                     keyboard::Key::Named(keyboard::key::Named::Enter)
                 )
             {
-                update(state, Message::SubmitCommit)
-            } else {
-                Task::none()
+                return update(state, Message::SubmitCommit);
             }
+
+            match key.as_ref() {
+                keyboard::Key::Named(keyboard::key::Named::Tab) => {
+                    let shift = modifiers.shift();
+                    composer.focus = match composer.focus {
+                        CommitFocus::Summary if shift => CommitFocus::Button,
+                        CommitFocus::Summary => CommitFocus::Description,
+                        CommitFocus::Description if shift => CommitFocus::Summary,
+                        CommitFocus::Description => CommitFocus::Button,
+                        CommitFocus::Button if shift => CommitFocus::Description,
+                        CommitFocus::Button => CommitFocus::Summary,
+                    };
+                    let focus_task = match composer.focus {
+                        CommitFocus::Summary => {
+                            let id = composer.input_id.clone();
+                            Task::batch([focus(id.clone()), move_cursor_to_end(id)])
+                        }
+                        CommitFocus::Description => {
+                            let id = composer.description_id.clone();
+                            focus(id)
+                        }
+                        CommitFocus::Button => focus(Id::new("__unfocus_dummy__")),
+                    };
+                    return focus_task;
+                }
+                keyboard::Key::Named(keyboard::key::Named::Enter)
+                    if composer.focus == CommitFocus::Button =>
+                {
+                    return update(state, Message::SubmitCommit);
+                }
+                _ => {}
+            }
+
+            Task::none()
         }
     }
 }
