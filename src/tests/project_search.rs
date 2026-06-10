@@ -81,6 +81,10 @@ fn test_state(files: Vec<ChangedFile>) -> State {
         pending_settings_save: None,
         zoom_level: 1.0,
         settings_open: false,
+        theme_dropdown_open: false,
+        hover_preview_theme: None,
+        pre_hover_theme: current_theme,
+        theme_transition: None,
     };
 
     state.sync_tree_state();

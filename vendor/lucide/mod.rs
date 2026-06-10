@@ -40,6 +40,10 @@ pub fn chevron_right() -> Text<'static> {
     icon('\u{e073}')
 }
 
+pub fn chevron_up() -> Text<'static> {
+    icon('\u{e074}')
+}
+
 pub fn folder_open() -> Text<'static> {
     icon('\u{e247}')
 }

@@ -7,6 +7,7 @@ use crate::tree::{SidebarRow, TreeDir, expand_parent_dirs};
 use crate::watch;
 use iced::keyboard;
 use iced::widget::Id;
+use iced::theme::palette::Palette;
 use iced::{Task, Theme};
 use iced_code_editor::Message as EditorMessage;
 use std::collections::{HashMap, HashSet};
@@ -389,6 +390,18 @@ pub(crate) struct State {
     pub(crate) pending_settings_save: Option<Instant>,
     pub(crate) zoom_level: f32,
     pub(crate) settings_open: bool,
+    pub(crate) theme_dropdown_open: bool,
+    pub(crate) hover_preview_theme: Option<AppTheme>,
+    pub(crate) pre_hover_theme: AppTheme,
+    pub(crate) theme_transition: Option<ThemeTransition>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ThemeTransition {
+    pub(crate) from: Palette,
+    pub(crate) to: Palette,
+    pub(crate) start: Instant,
+    pub(crate) duration: Duration,
 }
 
 /// Pending discard confirmation: holds the paths that will be discarded.
@@ -529,6 +542,10 @@ pub(crate) enum Message {
     OpenSettings,
     CloseSettings,
     RemoveRecentRepo(String),
+    ToggleThemeDropdown,
+    ThemeHovered(AppTheme),
+    ThemeHoverExited,
+    ThemeTransitionTick,
 }
 
 impl CommitComposer {

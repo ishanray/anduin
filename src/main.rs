@@ -210,6 +210,10 @@ fn boot() -> (State, Task<Message>) {
         pending_settings_save: None,
         zoom_level: settings.zoom_level.unwrap_or(1.0),
         settings_open: false,
+        theme_dropdown_open: false,
+        hover_preview_theme: None,
+        pre_hover_theme: current_theme,
+        theme_transition: None,
     };
 
     let branch_task = {
@@ -258,6 +262,11 @@ fn subscription(state: &State) -> Subscription<Message> {
     if state.pending_settings_save.is_some() {
         subscriptions
             .push(time::every(Duration::from_millis(100)).map(|_| Message::SettingsSaveTick));
+    }
+
+    if state.theme_transition.is_some() {
+        subscriptions
+            .push(time::every(Duration::from_millis(8)).map(|_| Message::ThemeTransitionTick));
     }
 
     Subscription::batch(subscriptions)

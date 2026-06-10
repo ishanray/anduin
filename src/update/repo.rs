@@ -9,7 +9,7 @@ use crate::actions::{
 use crate::app::{
     ActivePane, BranchPicker, ChangesFocus, CommitComposer, DiscardButton, DiscardConfirm,
     HistoryFocus, MenuAction, MenuItem, Message, ProjectPicker, ProjectSearch, SidebarTab,
-    SidebarTarget, State, StatusTone,
+    SidebarTarget, State, StatusTone, ThemeTransition,
 };
 use crate::config::AppTheme;
 use crate::git;
@@ -23,12 +23,15 @@ use crate::views::sidebar::PICKER_ROW_HEIGHT;
 use crate::theme;
 use crate::watch;
 use iced::Task;
+use iced::Theme;
 use iced::keyboard;
 use iced::widget::Id;
 use iced::widget::operation::{focus, move_cursor_to_end, select_all};
 use iced_code_editor::{Message as EditorMessage, theme as editor_theme};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+
+const THEME_TRANSITION_DURATION: Duration = Duration::from_millis(500);
 
 pub(crate) fn handle_files_loaded(
     state: &mut State,
@@ -206,7 +209,75 @@ pub(crate) fn handle_theme_selected(
     state
         .diff_editor
         .set_theme(editor_theme::from_iced_theme(&state.cached_theme));
+    state.theme_dropdown_open = false;
+    state.hover_preview_theme = None;
+    state.pre_hover_theme = theme;
+    state.theme_transition = None;
     state.persist_settings();
+    Task::none()
+}
+
+pub(crate) fn handle_toggle_theme_dropdown(state: &mut State) -> Task<Message> {
+    state.theme_dropdown_open = !state.theme_dropdown_open;
+    if !state.theme_dropdown_open {
+        state.hover_preview_theme = None;
+        state.theme_transition = None;
+        state.cached_theme = theme::from_app_theme(state.current_theme);
+        state
+            .diff_editor
+            .set_theme(editor_theme::from_iced_theme(&state.cached_theme));
+    } else {
+        state.pre_hover_theme = state.current_theme;
+    }
+    Task::none()
+}
+
+pub(crate) fn handle_theme_hovered(state: &mut State, theme: AppTheme) -> Task<Message> {
+    state.hover_preview_theme = Some(theme);
+    let from_palette = state.cached_theme.palette();
+    let to_palette = theme::palette_from_app_theme(theme);
+    state.theme_transition = Some(ThemeTransition {
+        from: from_palette,
+        to: to_palette,
+        start: Instant::now(),
+        duration: THEME_TRANSITION_DURATION,
+    });
+    Task::none()
+}
+
+pub(crate) fn handle_theme_hover_exited(state: &mut State) -> Task<Message> {
+    state.hover_preview_theme = None;
+    let from_palette = state.cached_theme.palette();
+    let to_palette = theme::palette_from_app_theme(state.pre_hover_theme);
+    state.theme_transition = Some(ThemeTransition {
+        from: from_palette,
+        to: to_palette,
+        start: Instant::now(),
+        duration: THEME_TRANSITION_DURATION,
+    });
+    Task::none()
+}
+
+pub(crate) fn handle_theme_transition_tick(state: &mut State) -> Task<Message> {
+    let Some(transition) = state.theme_transition else {
+        return Task::none();
+    };
+
+    let elapsed = transition.start.elapsed();
+    if elapsed >= transition.duration {
+        state.cached_theme = Theme::custom("Transitioning".to_owned(), transition.to);
+        state
+            .diff_editor
+            .set_theme(editor_theme::from_iced_theme(&state.cached_theme));
+        state.theme_transition = None;
+        return Task::none();
+    }
+
+    let t = elapsed.as_secs_f32() / transition.duration.as_secs_f32();
+    state.cached_theme = theme::interpolated_theme(&transition.from, &transition.to, t);
+    state
+        .diff_editor
+        .set_theme(editor_theme::from_iced_theme(&state.cached_theme));
     Task::none()
 }
 

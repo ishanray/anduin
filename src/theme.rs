@@ -1,5 +1,5 @@
 use crate::config::AppTheme;
-use iced::theme::Palette;
+use iced::theme::palette::{Palette, mix};
 use iced::{Color, Theme};
 
 /// GitHub Dark theme colors
@@ -61,4 +61,30 @@ pub fn from_app_theme(app_theme: AppTheme) -> Theme {
         AppTheme::Oxocarbon => Theme::Oxocarbon,
         AppTheme::Ferra => Theme::Ferra,
     }
+}
+
+pub fn palette_from_app_theme(app_theme: AppTheme) -> Palette {
+    from_app_theme(app_theme).palette()
+}
+
+pub fn lerp_palette(from: &Palette, to: &Palette, t: f32) -> Palette {
+    Palette {
+        background: mix(from.background, to.background, t),
+        text: mix(from.text, to.text, t),
+        primary: mix(from.primary, to.primary, t),
+        success: mix(from.success, to.success, t),
+        warning: mix(from.warning, to.warning, t),
+        danger: mix(from.danger, to.danger, t),
+    }
+}
+
+pub fn interpolated_theme(from: &Palette, to: &Palette, t: f32) -> Theme {
+    let eased = smoothstep(t);
+    let palette = lerp_palette(from, to, eased);
+    Theme::custom("Transitioning".to_owned(), palette)
+}
+
+fn smoothstep(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }

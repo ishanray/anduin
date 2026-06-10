@@ -245,6 +245,10 @@ pub(crate) fn update(state: &mut State, message: Message) -> Task<Message> {
             state.persist_settings();
             Task::none()
         }
+        Message::ToggleThemeDropdown => repo::handle_toggle_theme_dropdown(state),
+        Message::ThemeHovered(theme) => repo::handle_theme_hovered(state, theme),
+        Message::ThemeHoverExited => repo::handle_theme_hover_exited(state),
+        Message::ThemeTransitionTick => repo::handle_theme_transition_tick(state),
         Message::OpenInEditor(rel_path) => {
             let full_path = state.repo_path.join(&rel_path);
 
